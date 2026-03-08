@@ -792,7 +792,7 @@ export default function AccountsPanel({ rpcUrl, onSelectAccount }: Props) {
                           <div className="text-[9px] text-muted-foreground/40 mb-1 uppercase tracking-widest">
                             Balances
                           </div>
-                          {accounts.slice(0, 8).map((acc, i) => {
+                          {accounts.map((acc, i) => {
                             const bal = t.balances[acc.address] || '0';
                             const hasBalance = parseFloat(bal) > 0;
                             return (

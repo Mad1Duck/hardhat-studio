@@ -410,7 +410,6 @@ ipcMain.handle('git-pull', async (_, cwd: string) => {
 
 // ─── Hardhat accounts ─────────────────────────────────────────────────────────
 ipcMain.handle('get-hardhat-accounts', async (_, rpcUrl: string) => {
-  // Standard Hardhat default accounts with their private keys
   const DEFAULT_ACCOUNTS = [
     { address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266', privateKey: '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80' },
     { address: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8', privateKey: '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' },
@@ -422,8 +421,48 @@ ipcMain.handle('get-hardhat-accounts', async (_, rpcUrl: string) => {
     { address: '0x14dC79964da2C08b23698B3D3cc7Ca32193d9955', privateKey: '0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356' },
     { address: '0x23618e81E3f5cdF7f54C3d65f7FBc0aBf5B21E8f', privateKey: '0xdbda1821b80551c9d65939329250132c444b4a15823c01d4b8a5e64d03c5a8a5' },
     { address: '0xa0Ee7A142d267C1f36714E4a8F75612F20a79720', privateKey: '0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6' },
+    { address: '0xBcd4042DE499D14e55001CcbB24a551F3b954096', privateKey: '0xf214f2b2cd398c806f84e317254e0f0b801d0643303237d97a22a48e01628897' },
+    { address: '0x71bE63f3384f5fb98995898A86B02Fb2426c5788', privateKey: '0x701b615bbdfb9de65240bc28bd21bbc0d996645a3dd57e7b12bc2bdf6f192c82' },
+    { address: '0xFABB0ac9d68B0B445fB7357272Ff202C5651694a', privateKey: '0xa267530f49f8280200edf313ee7af6b827f2a8bce2897751d06a843f644967b1' },
+    { address: '0x1CBd3b2770909D4e10f157cABC84C7264073C9Ec', privateKey: '0x47c99abed3324a2707c28affff1267e45918ec8c3f20b8aa892e8b065d2942dd' },
+    { address: '0xdF3e18d64BC6A983f673Ab319CCaE4f1a57C7097', privateKey: '0xc526ee95bf44d8fc405a158bb884d9d1238d99f0612e9f33d006bb0789009aaa' },
+    { address: '0xcd3B766CCDd6AE721141F452C550Ca635964ce71', privateKey: '0x8166f546bab6da521a8369cab06c5d2b9e46670292d85ca9517fb0706b19e7b' },
+    { address: '0x2546BcD3c84621e976D8185a91A922aE77ECEc30', privateKey: '0xea6c44ac03bff858b476bba28179e2f12f3a5cb5e89fa64dd57ce40de0e4c8a' },
+    { address: '0xbDA5747bFD65F08deb54cb465eB87D40e51B197E', privateKey: '0x689af8efa8c651a91ad287602527f3af2fe9f6501a7ac4b061667b5a93e037fd' },
+    { address: '0xdD2FD4581271e230360230F9337D5c0430Bf44C0', privateKey: '0xde9be857da6a0e9c9f7a5c2f8c22a0d5f8a2bbb60b87f6bebc02fb17f9ca0d2' },
+    { address: '0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199', privateKey: '0xdf57089febbacf7ba0bc227dafbffa9fc08a93fdc68e1e42411a14efcf23656e' },
   ];
-  return DEFAULT_ACCOUNTS.map((a, i) => ({ ...a, index: i, balance: '10000' }));
+
+  // Try to fetch live accounts from the running Hardhat node.
+  // eth_accounts returns the same 20 addresses when node is active.
+  // We match them against our known keys; if the node is down, fall back to defaults.
+  try {
+    const res = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_accounts', params: [] }),
+    });
+    const data = await res.json() as { result?: string[]; error?: { message: string; }; };
+    if (data.result && Array.isArray(data.result) && data.result.length > 0) {
+      const liveAddresses: string[] = data.result;
+      // Build a lookup from our known list (lower-case address → entry)
+      const knownMap = new Map(DEFAULT_ACCOUNTS.map(a => [a.address.toLowerCase(), a]));
+      return liveAddresses.map((addr, i) => {
+        const known = knownMap.get(addr.toLowerCase());
+        return {
+          address: addr,
+          privateKey: known?.privateKey ?? '',
+          index: i,
+          balance: '0',
+        };
+      });
+    }
+  } catch {
+    // Node not reachable — fall through to static list
+  }
+
+  // Fallback: return full static 20-account list
+  return DEFAULT_ACCOUNTS.map((a, i) => ({ ...a, index: i, balance: '0' }));
 });
 
 // ─── Read README ──────────────────────────────────────────────────────────────
