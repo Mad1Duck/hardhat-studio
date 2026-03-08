@@ -1,0 +1,1055 @@
+"use strict";
+const electron = require("electron");
+const path = require("path");
+const child_process = require("child_process");
+const fs = require("fs");
+const isDev = process.env.NODE_ENV === "development" || !!process.env["ELECTRON_RENDERER_URL"];
+let mainWindow = null;
+const processes = /* @__PURE__ */ new Map();
+const watchers = /* @__PURE__ */ new Map();
+function createWindow() {
+  mainWindow = new electron.BrowserWindow({
+    width: 1600,
+    height: 960,
+    minWidth: 1200,
+    minHeight: 720,
+    show: false,
+    autoHideMenuBar: true,
+    backgroundColor: "#090c12",
+    webPreferences: {
+      preload: path.join(__dirname, "../preload/index.js"),
+      sandbox: false,
+      contextIsolation: true
+    }
+  });
+  mainWindow.on("ready-to-show", () => mainWindow.show());
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    electron.shell.openExternal(url);
+    return { action: "deny" };
+  });
+  const rendererUrl = process.env["ELECTRON_RENDERER_URL"];
+  if (isDev && rendererUrl) {
+    mainWindow.loadURL(rendererUrl);
+    mainWindow.webContents.openDevTools({ mode: "detach" });
+  } else {
+    mainWindow.loadFile(path.join(__dirname, "../renderer/index.html"));
+  }
+}
+electron.app.whenReady().then(() => {
+  electron.app.setAppUserModelId("com.hardhatstudio");
+  createWindow();
+  electron.app.on("activate", () => {
+    if (electron.BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
+electron.app.on("window-all-closed", () => {
+  processes.forEach((p) => {
+    try {
+      p.kill();
+    } catch {
+    }
+  });
+  watchers.forEach((w) => {
+    try {
+      w.close();
+    } catch {
+    }
+  });
+  if (process.platform !== "darwin") electron.app.quit();
+});
+electron.ipcMain.handle("select-folder", async () => {
+  const result = await electron.dialog.showOpenDialog(mainWindow, {
+    properties: ["openDirectory"],
+    title: "Select Hardhat Project Folder"
+  });
+  return result.canceled ? null : result.filePaths[0];
+});
+electron.ipcMain.handle("validate-project", async (_, folderPath) => {
+  try {
+    const configs = ["hardhat.config.js", "hardhat.config.ts", "hardhat.config.cjs", "hardhat.config.mjs"];
+    const configFile = configs.find((f) => fs.existsSync(path.join(folderPath, f)));
+    const hasPkg = fs.existsSync(path.join(folderPath, "package.json"));
+    let pkg = {};
+    if (hasPkg) {
+      try {
+        pkg = JSON.parse(fs.readFileSync(path.join(folderPath, "package.json"), "utf-8"));
+      } catch {
+      }
+    }
+    const isBun = fs.existsSync(path.join(folderPath, "bun.lockb"));
+    const pm = isBun ? "bun" : fs.existsSync(path.join(folderPath, "pnpm-lock.yaml")) ? "pnpm" : fs.existsSync(path.join(folderPath, "yarn.lock")) ? "yarn" : "npm";
+    let bunInstalled = false;
+    try {
+      child_process.execSync("bun --version", { stdio: "ignore" });
+      bunInstalled = true;
+    } catch {
+    }
+    let hardhatVersion = null;
+    try {
+      const hhPkg = JSON.parse(fs.readFileSync(path.join(folderPath, "node_modules", "hardhat", "package.json"), "utf-8"));
+      hardhatVersion = hhPkg.version;
+    } catch {
+    }
+    const deps = { ...pkg.dependencies || {}, ...pkg.devDependencies || {} };
+    const hasHardhat = "hardhat" in deps || !!hardhatVersion;
+    const hasEthers = "ethers" in deps || "@nomicfoundation/hardhat-ethers" in deps;
+    const hasViem = "viem" in deps || "@nomicfoundation/hardhat-viem" in deps;
+    const framework = hasEthers && hasViem ? "both" : hasEthers ? "ethers" : hasViem ? "viem" : null;
+    const plugins = [];
+    if ("@openzeppelin/contracts" in deps) plugins.push("openzeppelin");
+    if ("@nomicfoundation/hardhat-toolbox" in deps) plugins.push("toolbox");
+    if ("hardhat-gas-reporter" in deps) plugins.push("gas-reporter");
+    if ("solidity-coverage" in deps) plugins.push("coverage");
+    if ("@typechain/hardhat" in deps) plugins.push("typechain");
+    if ("hardhat-deploy" in deps) plugins.push("hardhat-deploy");
+    if ("@openzeppelin/hardhat-upgrades" in deps) plugins.push("upgrades");
+    const envFile = fs.existsSync(path.join(folderPath, ".env"));
+    let networks = {};
+    if (configFile) {
+      try {
+        const cfgContent = fs.readFileSync(path.join(folderPath, configFile), "utf-8");
+        const netMatch = cfgContent.match(/networks\s*:\s*\{([^}]+(?:\{[^}]*\}[^}]*)*)\}/s);
+        if (netMatch) {
+          const networkNames = [...netMatch[1].matchAll(/(\w+)\s*:/g)].map((m) => m[1]);
+          networkNames.filter((n) => !["accounts", "url", "chainId", "gas", "gasPrice", "timeout"].includes(n)).forEach((n) => {
+            networks[n] = {};
+          });
+        }
+      } catch {
+      }
+    }
+    return {
+      valid: !!configFile || hasHardhat,
+      configFile: configFile || null,
+      packageManager: pm,
+      name: pkg.name || path.basename(folderPath),
+      hardhatVersion,
+      nodeModulesExist: fs.existsSync(path.join(folderPath, "node_modules")),
+      framework,
+      plugins,
+      networks,
+      envFile,
+      bunInstalled,
+      isBun
+    };
+  } catch (e) {
+    return { valid: false, error: String(e) };
+  }
+});
+electron.ipcMain.handle("scan-abis", async (_, folderPath) => {
+  const abis = [];
+  const scan = (dir) => {
+    if (!fs.existsSync(dir)) return;
+    try {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory() && !entry.name.startsWith(".") && entry.name !== "build-info") {
+          scan(full);
+        } else if (entry.isFile() && entry.name.endsWith(".json") && !entry.name.endsWith(".dbg.json")) {
+          try {
+            const content = JSON.parse(fs.readFileSync(full, "utf-8"));
+            if (Array.isArray(content.abi) && content.abi.length > 0) {
+              abis.push({
+                name: entry.name.replace(".json", ""),
+                contractName: content.contractName || entry.name.replace(".json", ""),
+                path: full,
+                abi: content.abi,
+                bytecode: content.bytecode || null,
+                sourceName: content.sourceName || null
+              });
+            }
+          } catch {
+          }
+        }
+      }
+    } catch {
+    }
+  };
+  const dirs = ["artifacts", "artifacts/contracts", "out", "build/contracts", "deployments"];
+  dirs.forEach((d) => scan(path.join(folderPath, d)));
+  return abis;
+});
+electron.ipcMain.handle("watch-abis", async (_, folderPath) => {
+  const existing = watchers.get(folderPath);
+  if (existing) {
+    try {
+      existing.close();
+    } catch {
+    }
+  }
+  const artifactsPath = path.join(folderPath, "artifacts");
+  if (!fs.existsSync(artifactsPath)) return false;
+  try {
+    const w = fs.watch(artifactsPath, { recursive: true }, (_event, filename) => {
+      if (filename && filename.endsWith(".json") && !filename.includes("dbg")) {
+        mainWindow?.webContents.send("abis-changed", folderPath);
+      }
+    });
+    watchers.set(folderPath, w);
+    return true;
+  } catch {
+    return false;
+  }
+});
+electron.ipcMain.handle("scan-sources", async (_, folderPath) => {
+  const files = [];
+  const scan = (dir, depth = 0) => {
+    if (depth > 4 || !fs.existsSync(dir)) return;
+    try {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory() && depth < 3) scan(full, depth + 1);
+        else if (entry.isFile() && (entry.name.endsWith(".sol") || entry.name.endsWith(".js") || entry.name.endsWith(".ts"))) {
+          const stat = fs.statSync(full);
+          files.push({ name: entry.name, path: full, size: stat.size });
+        }
+      }
+    } catch {
+    }
+  };
+  scan(folderPath);
+  return files;
+});
+electron.ipcMain.handle("run-command", async (_, { id, command, cwd }) => {
+  const existing = processes.get(id);
+  if (existing) {
+    try {
+      existing.kill("SIGTERM");
+    } catch {
+    }
+    processes.delete(id);
+  }
+  return new Promise((resolve) => {
+    try {
+      const isWin = process.platform === "win32";
+      const child = child_process.spawn(isWin ? "cmd" : "/bin/sh", [isWin ? "/c" : "-c", command], {
+        cwd,
+        env: { ...process.env },
+        stdio: ["pipe", "pipe", "pipe"]
+      });
+      processes.set(id, child);
+      child.stdout?.on("data", (data) => {
+        mainWindow?.webContents.send("process-output", { id, type: "stdout", data: data.toString() });
+      });
+      child.stderr?.on("data", (data) => {
+        mainWindow?.webContents.send("process-output", { id, type: "stderr", data: data.toString() });
+      });
+      child.on("spawn", () => {
+        mainWindow?.webContents.send("process-status", { id, status: "running" });
+        resolve({ success: true });
+      });
+      child.on("close", (code) => {
+        processes.delete(id);
+        mainWindow?.webContents.send("process-status", { id, status: "stopped", code });
+      });
+      child.on("error", (err) => {
+        processes.delete(id);
+        mainWindow?.webContents.send("process-status", { id, status: "error", error: err.message });
+        resolve({ success: false, error: err.message });
+      });
+    } catch (e) {
+      resolve({ success: false, error: String(e) });
+    }
+  });
+});
+electron.ipcMain.handle("stop-command", async (_, id) => {
+  const proc = processes.get(id);
+  if (!proc) return false;
+  try {
+    if (process.platform === "win32") {
+      child_process.spawn("taskkill", ["/pid", String(proc.pid), "/f", "/t"]);
+    } else {
+      proc.kill("SIGTERM");
+      setTimeout(() => {
+        try {
+          proc.kill("SIGKILL");
+        } catch {
+        }
+      }, 2e3);
+    }
+    processes.delete(id);
+    return true;
+  } catch {
+    return false;
+  }
+});
+electron.ipcMain.handle("get-process-status", async (_, id) => processes.has(id) ? "running" : "stopped");
+electron.ipcMain.handle("read-file", async (_, filePath) => {
+  try {
+    return fs.readFileSync(filePath, "utf-8");
+  } catch {
+    return null;
+  }
+});
+electron.ipcMain.handle("write-file", async (_, { filePath, content }) => {
+  try {
+    fs.writeFileSync(filePath, content, "utf-8");
+    return true;
+  } catch {
+    return false;
+  }
+});
+electron.ipcMain.handle("list-dir", async (_, dirPath) => {
+  try {
+    if (!fs.existsSync(dirPath)) return [];
+    return fs.readdirSync(dirPath, { withFileTypes: true }).map((e) => ({
+      name: e.name,
+      isDir: e.isDirectory(),
+      path: path.join(dirPath, e.name)
+    }));
+  } catch {
+    return [];
+  }
+});
+electron.ipcMain.handle("open-external", async (_, url) => electron.shell.openExternal(url));
+electron.ipcMain.handle("open-in-editor", async (_, filePath) => {
+  const editors = ["code", "cursor", "subl", "vim", "nano"];
+  for (const editor of editors) {
+    try {
+      child_process.spawn(editor, [filePath], { detached: true, stdio: "ignore" });
+      return true;
+    } catch {
+    }
+  }
+  try {
+    electron.shell.openPath(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+});
+electron.ipcMain.handle("read-env", async (_, folderPath) => {
+  const envPath = path.join(folderPath, ".env");
+  if (!fs.existsSync(envPath)) return [];
+  try {
+    const content = fs.readFileSync(envPath, "utf-8");
+    return content.split("\n").filter((l) => l.trim() && !l.startsWith("#")).map((l) => {
+      const idx = l.indexOf("=");
+      if (idx === -1) return null;
+      return { key: l.slice(0, idx).trim(), value: l.slice(idx + 1).trim() };
+    }).filter(Boolean);
+  } catch {
+    return [];
+  }
+});
+electron.ipcMain.handle("write-env", async (_, { folderPath, entries }) => {
+  const envPath = path.join(folderPath, ".env");
+  try {
+    const content = entries.map((e) => `${e.key}=${e.value}`).join("\n");
+    fs.writeFileSync(envPath, content, "utf-8");
+    return true;
+  } catch {
+    return false;
+  }
+});
+const gitCmd = (cmd, cwd) => {
+  try {
+    return child_process.execSync(`git ${cmd}`, { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+  } catch {
+    return "";
+  }
+};
+electron.ipcMain.handle("git-status", async (_, cwd) => {
+  try {
+    const branch = gitCmd("rev-parse --abbrev-ref HEAD", cwd);
+    if (!branch) return null;
+    const remoteUrl = gitCmd("remote get-url origin", cwd);
+    const ahead = parseInt(gitCmd("rev-list --count @{u}..HEAD", cwd) || "0");
+    const behind = parseInt(gitCmd("rev-list --count HEAD..@{u}", cwd) || "0");
+    const statusRaw = gitCmd("status --porcelain", cwd);
+    const staged = [], unstaged = [], untracked = [];
+    statusRaw.split("\n").filter(Boolean).forEach((l) => {
+      const s = l.slice(0, 2);
+      const f = l.slice(3);
+      if (s[0] !== " " && s[0] !== "?") staged.push(f);
+      if (s[1] === "M" || s[1] === "D") unstaged.push(f);
+      if (s === "??") untracked.push(f);
+    });
+    return { branch, ahead: isNaN(ahead) ? 0 : ahead, behind: isNaN(behind) ? 0 : behind, staged, unstaged, untracked, remoteUrl };
+  } catch {
+    return null;
+  }
+});
+electron.ipcMain.handle("git-branches", async (_, cwd) => {
+  try {
+    const raw = gitCmd("branch -a", cwd);
+    return raw.split("\n").filter(Boolean).map((b) => {
+      const current = b.startsWith("*");
+      const name = b.replace(/^\*?\s+/, "").trim();
+      return { name, current, remote: name.startsWith("remotes/") };
+    });
+  } catch {
+    return [];
+  }
+});
+electron.ipcMain.handle("git-log", async (_, cwd) => {
+  try {
+    const raw = gitCmd('log --oneline --format="%H|%h|%s|%an|%ar" -20', cwd);
+    return raw.split("\n").filter(Boolean).map((l) => {
+      const [hash, shortHash, message, author, date] = l.split("|");
+      return { hash, shortHash, message, author, date };
+    });
+  } catch {
+    return [];
+  }
+});
+electron.ipcMain.handle("git-diff", async (_, { cwd, file }) => {
+  try {
+    const cmd = file ? `diff HEAD -- "${file}"` : "diff HEAD";
+    return gitCmd(cmd, cwd);
+  } catch {
+    return "";
+  }
+});
+electron.ipcMain.handle("git-commit", async (_, { cwd, message, push }) => {
+  try {
+    gitCmd("add -A", cwd);
+    gitCmd(`commit -m "${message.replace(/"/g, '\\"')}"`, cwd);
+    if (push) gitCmd("push", cwd);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+});
+electron.ipcMain.handle("git-checkout", async (_, { cwd, branch, create }) => {
+  try {
+    if (create) gitCmd(`checkout -b ${branch}`, cwd);
+    else gitCmd(`checkout ${branch}`, cwd);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+});
+electron.ipcMain.handle("git-pull", async (_, cwd) => {
+  try {
+    gitCmd("pull", cwd);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+});
+electron.ipcMain.handle("get-hardhat-accounts", async (_, rpcUrl) => {
+  const DEFAULT_ACCOUNTS = [
+    { address: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", privateKey: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" },
+    { address: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", privateKey: "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d" },
+    { address: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC", privateKey: "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a" },
+    { address: "0x90F79bf6EB2c4f870365E785982E1f101E93b906", privateKey: "0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6" },
+    { address: "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65", privateKey: "0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926b" },
+    { address: "0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc", privateKey: "0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba" },
+    { address: "0x976EA74026E726554dB657fA54763abd0C3a0aa9", privateKey: "0x92db14e403b83dfe3df233f83dfa3a0d7096f21ca9b0d6d6b8d88b2b4ec1564" },
+    { address: "0x14dC79964da2C08b23698B3D3cc7Ca32193d9955", privateKey: "0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356" },
+    { address: "0x23618e81E3f5cdF7f54C3d65f7FBc0aBf5B21E8f", privateKey: "0xdbda1821b80551c9d65939329250132c444b4a15823c01d4b8a5e64d03c5a8a5" },
+    { address: "0xa0Ee7A142d267C1f36714E4a8F75612F20a79720", privateKey: "0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6" }
+  ];
+  return DEFAULT_ACCOUNTS.map((a, i) => ({ ...a, index: i, balance: "10000" }));
+});
+electron.ipcMain.handle("read-readme", async (_, folderPath) => {
+  const names = ["README.md", "readme.md", "README.MD", "Readme.md"];
+  for (const n of names) {
+    const p = path.join(folderPath, n);
+    if (fs.existsSync(p)) {
+      try {
+        return fs.readFileSync(p, "utf-8");
+      } catch {
+      }
+    }
+  }
+  return null;
+});
+electron.ipcMain.handle("analyze-security", async (_, { folderPath }) => {
+  const findings = [];
+  const scan = (dir) => {
+    if (!fs.existsSync(dir)) return;
+    try {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name === "node_modules") continue;
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) scan(full);
+        else if (entry.name.endsWith(".sol")) {
+          try {
+            const content = fs.readFileSync(full, "utf-8");
+            const lines = content.split("\n");
+            lines.forEach((line, i) => {
+              if (line.includes("tx.origin"))
+                findings.push({ severity: "high", title: "tx.origin Usage", description: `tx.origin used in ${entry.name}:${i + 1}`, line: i + 1, function: "", recommendation: "Use msg.sender instead" });
+              if (line.includes("selfdestruct") || line.includes("suicide"))
+                findings.push({ severity: "critical", title: "Selfdestruct", description: `Selfdestruct in ${entry.name}:${i + 1}`, line: i + 1, recommendation: "Remove selfdestruct or add strict access control" });
+              if (line.match(/\.call\s*\{/))
+                findings.push({ severity: "medium", title: "Low-level call", description: `Low-level call in ${entry.name}:${i + 1}`, line: i + 1, recommendation: "Check return value and add reentrancy guard" });
+              if (line.includes("block.timestamp") || line.includes("now"))
+                findings.push({ severity: "low", title: "Timestamp Dependency", description: `Timestamp usage in ${entry.name}:${i + 1}`, line: i + 1, recommendation: "Avoid relying on block.timestamp for critical logic" });
+              if (line.match(/\.transfer\s*\(/) || line.match(/\.send\s*\(/))
+                findings.push({ severity: "medium", title: "transfer/send Usage", description: `transfer/send in ${entry.name}:${i + 1}`, line: i + 1, recommendation: "Use call{value:...}() with reentrancy guard instead" });
+              if (line.includes("delegatecall"))
+                findings.push({ severity: "high", title: "Delegatecall", description: `Delegatecall in ${entry.name}:${i + 1}`, line: i + 1, recommendation: "Ensure delegatecall target is trusted and not upgradeable" });
+            });
+            if (!content.includes("pragma solidity") || content.match(/pragma solidity\s+\^0\.[0-7]/))
+              findings.push({ severity: "medium", title: "Outdated Solidity", description: `${entry.name} may use outdated compiler`, recommendation: "Use solidity 0.8.x or later" });
+            if (!content.includes("Ownable") && !content.includes("AccessControl") && content.includes("onlyOwner"))
+              findings.push({ severity: "low", title: "Custom Access Control", description: `Custom access control in ${entry.name}`, recommendation: "Use OpenZeppelin Ownable or AccessControl" });
+          } catch {
+          }
+        }
+      }
+    } catch {
+    }
+  };
+  const contractsDir = path.join(folderPath, "contracts");
+  if (fs.existsSync(contractsDir)) scan(contractsDir);
+  else scan(folderPath);
+  return findings;
+});
+electron.ipcMain.handle("export-logs", async (_, { content, filename }) => {
+  const result = await electron.dialog.showSaveDialog(mainWindow, {
+    defaultPath: filename,
+    filters: [{ name: "Log Files", extensions: ["log", "txt", "json"] }]
+  });
+  if (result.canceled || !result.filePath) return false;
+  try {
+    fs.writeFileSync(result.filePath, content, "utf-8");
+    return true;
+  } catch {
+    return false;
+  }
+});
+electron.ipcMain.handle("save-workspace", async (_, { workspace, savePath }) => {
+  const filePath = savePath || (await electron.dialog.showSaveDialog(mainWindow, {
+    defaultPath: "workspace.hhws",
+    filters: [{ name: "Hardhat Studio Workspace", extensions: ["hhws", "json"] }]
+  })).filePath;
+  if (!filePath) return null;
+  try {
+    fs.writeFileSync(filePath, JSON.stringify(workspace, null, 2), "utf-8");
+    return filePath;
+  } catch {
+    return null;
+  }
+});
+electron.ipcMain.handle("load-workspace", async (_, loadPath) => {
+  const filePath = loadPath || (await electron.dialog.showOpenDialog(mainWindow, {
+    filters: [{ name: "Hardhat Studio Workspace", extensions: ["hhws", "json"] }],
+    properties: ["openFile"]
+  })).filePaths?.[0];
+  if (!filePath || !fs.existsSync(filePath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf-8"));
+  } catch {
+    return null;
+  }
+});
+electron.ipcMain.handle("generate-docs", async (_, { abis, projectName, outputPath }) => {
+  const outDir = outputPath || (await electron.dialog.showOpenDialog(mainWindow, {
+    properties: ["openDirectory"],
+    title: "Select Obsidian Vault or Output Folder"
+  })).filePaths?.[0];
+  if (!outDir) return false;
+  try {
+    const docsDir = path.join(outDir, projectName);
+    fs.mkdirSync(docsDir, { recursive: true });
+    const abiList = abis;
+    for (const abi of abiList) {
+      const fns = abi.abi.filter((i) => i.type === "function");
+      const events = abi.abi.filter((i) => i.type === "event");
+      let doc = `# ${abi.contractName}
+
+`;
+      doc += `> Source: \`${abi.sourceName || "unknown"}\`
+
+`;
+      doc += `## Functions
+
+`;
+      for (const fn of fns) {
+        doc += `### \`${fn.name}(${(fn.inputs || []).map((i) => `${i.type} ${i.name}`).join(", ")})\`
+`;
+        doc += `- **Mutability**: \`${fn.stateMutability}\`
+`;
+        if (fn.outputs?.length) doc += `- **Returns**: \`${fn.outputs.map((o) => o.type).join(", ")}\`
+`;
+        doc += `
+`;
+      }
+      if (events.length) {
+        doc += `## Events
+
+`;
+        for (const ev of events) {
+          doc += `### \`${ev.name}(${(ev.inputs || []).map((i) => `${i.type} ${i.name}`).join(", ")})\`
+
+`;
+        }
+      }
+      fs.writeFileSync(path.join(docsDir, `${abi.contractName}.md`), doc, "utf-8");
+    }
+    let index = `# ${projectName} - Contract Index
+
+`;
+    for (const abi of abiList) index += `- [[${abi.contractName}]]
+`;
+    fs.writeFileSync(path.join(docsDir, "INDEX.md"), index, "utf-8");
+    return true;
+  } catch {
+    return false;
+  }
+});
+electron.ipcMain.handle(
+  "scan-scripts",
+  async (_, folderPath, subDir = null) => {
+    const targetDir = subDir ? path.join(folderPath, subDir) : path.join(folderPath, "scripts");
+    if (!fs.existsSync(targetDir)) return [];
+    const results = [];
+    const scan = (dir, depth = 0) => {
+      if (depth > 3) return;
+      try {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            scan(full, depth + 1);
+            continue;
+          }
+          if (entry.name.endsWith(".js") || entry.name.endsWith(".ts") || entry.name.endsWith(".mjs")) {
+            const stat = fs.statSync(full);
+            const rel = path.relative(folderPath, full);
+            results.push({
+              id: rel,
+              name: entry.name,
+              path: full,
+              relativePath: rel,
+              size: stat.size
+            });
+          }
+        }
+      } catch {
+      }
+    };
+    scan(targetDir);
+    return results;
+  }
+);
+electron.ipcMain.handle("evm-snapshot", async (_, rpcUrl) => {
+  try {
+    const res = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "evm_snapshot", params: [] })
+    });
+    const data = await res.json();
+    if (data.error) return { success: false, error: data.error.message };
+    return { success: true, snapshotId: data.result };
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+});
+electron.ipcMain.handle("evm-revert", async (_, { rpcUrl, snapshotId }) => {
+  try {
+    const res = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "evm_revert", params: [snapshotId] })
+    });
+    const data = await res.json();
+    if (data.error) return { success: false, error: data.error.message };
+    return { success: true, result: data.result };
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+});
+electron.ipcMain.handle("evm-mine", async (_, rpcUrl) => {
+  try {
+    const res = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "evm_mine", params: [] })
+    });
+    const data = await res.json();
+    return { success: !data.error };
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+});
+electron.ipcMain.handle("eth-block-number", async (_, rpcUrl) => {
+  try {
+    const res = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] })
+    });
+    const data = await res.json();
+    return data.result ? parseInt(data.result, 16) : 0;
+  } catch {
+    return 0;
+  }
+});
+electron.ipcMain.handle("scan-artifacts-meta", async (_, folderPath) => {
+  const results = [];
+  const artifactsDir = path.join(folderPath, "artifacts");
+  if (!fs.existsSync(artifactsDir)) return results;
+  const scan = (dir) => {
+    try {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory() && entry.name !== "build-info") {
+          scan(full);
+          continue;
+        }
+        if (entry.isFile() && entry.name.endsWith(".json") && !entry.name.endsWith(".dbg.json")) {
+          try {
+            const content = JSON.parse(fs.readFileSync(full, "utf-8"));
+            if (Array.isArray(content.abi)) {
+              const stat = fs.statSync(full);
+              results.push({
+                contractName: content.contractName || entry.name.replace(".json", ""),
+                path: full,
+                bytecodeSizeBytes: content.bytecode ? (content.bytecode.length - 2) / 2 : 0,
+                abiCount: content.abi.length,
+                modifiedAt: stat.mtimeMs,
+                abi: content.abi
+              });
+            }
+          } catch {
+          }
+        }
+      }
+    } catch {
+    }
+  };
+  scan(artifactsDir);
+  return results;
+});
+electron.ipcMain.handle("get-token-balances", async (_, { rpcUrl, address, tokenAddresses }) => {
+  const ERC20_BALANCE_OF = "0x70a08231";
+  const ERC20_SYMBOL = "0x95d89b41";
+  const ERC20_DECIMALS = "0x313ce567";
+  const ERC20_NAME = "0x06fdde03";
+  const results = [];
+  for (const tokenAddr of tokenAddresses) {
+    try {
+      const padAddr = address.slice(2).padStart(64, "0");
+      const [balRes, symRes, decRes, nameRes] = await Promise.all([
+        fetch(rpcUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to: tokenAddr, data: ERC20_BALANCE_OF + padAddr }, "latest"] })
+        }),
+        fetch(rpcUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "eth_call", params: [{ to: tokenAddr, data: ERC20_SYMBOL }, "latest"] })
+        }),
+        fetch(rpcUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 3, method: "eth_call", params: [{ to: tokenAddr, data: ERC20_DECIMALS }, "latest"] })
+        }),
+        fetch(rpcUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 4, method: "eth_call", params: [{ to: tokenAddr, data: ERC20_NAME }, "latest"] })
+        })
+      ]);
+      const [balData, symData, decData, nameData] = await Promise.all([
+        balRes.json(),
+        symRes.json(),
+        decRes.json(),
+        nameRes.json()
+      ]);
+      const balance = balData.result && balData.result !== "0x" ? BigInt(balData.result).toString() : "0";
+      const decimals = decData.result && decData.result !== "0x" ? parseInt(decData.result, 16) : 18;
+      const decodeStr = (hex) => {
+        if (!hex || hex === "0x") return "";
+        try {
+          const clean = hex.slice(2);
+          const offset = parseInt(clean.slice(0, 64), 16) * 2;
+          const len = parseInt(clean.slice(64, 128), 16) * 2;
+          const str = clean.slice(128, 128 + len);
+          return Buffer.from(str, "hex").toString("utf8").replace(/\0/g, "");
+        } catch {
+          return "";
+        }
+      };
+      results.push({
+        address: tokenAddr,
+        name: decodeStr(nameData.result || ""),
+        symbol: decodeStr(symData.result || ""),
+        decimals,
+        balance,
+        balanceFormatted: decimals > 0 ? (Number(balance) / Math.pow(10, decimals)).toFixed(4) : balance
+      });
+    } catch {
+    }
+  }
+  return results;
+});
+electron.ipcMain.handle("inspect-proxy", async (_, { rpcUrl, address }) => {
+  const SLOTS = {
+    implementation: "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
+    admin: "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103",
+    beacon: "0xa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d50"
+  };
+  const getSlot = async (slot) => {
+    try {
+      const res = await fetch(rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getStorageAt", params: [address, slot, "latest"] })
+      });
+      const data = await res.json();
+      return data.result || "0x0000000000000000000000000000000000000000000000000000000000000000";
+    } catch {
+      return "0x" + "0".repeat(64);
+    }
+  };
+  const [implSlot, adminSlot, beaconSlot] = await Promise.all([
+    getSlot(SLOTS.implementation),
+    getSlot(SLOTS.admin),
+    getSlot(SLOTS.beacon)
+  ]);
+  const toAddr = (slot) => "0x" + slot.slice(-40);
+  const isZero = (addr) => addr === "0x" + "0".repeat(40);
+  const impl = toAddr(implSlot);
+  const admin = toAddr(adminSlot);
+  const beacon = toAddr(beaconSlot);
+  let type = "unknown";
+  if (!isZero(impl) && !isZero(admin)) type = "transparent";
+  else if (!isZero(impl) && isZero(admin)) type = "uups";
+  else if (!isZero(beacon)) type = "beacon";
+  const codeRes = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getCode", params: [address, "latest"] })
+  });
+  const codeData = await codeRes.json();
+  const code = codeData.result || "0x";
+  if (code.includes("363d3d37")) type = "minimal";
+  return {
+    type,
+    proxyAddress: address,
+    implementationAddress: isZero(impl) ? null : impl,
+    adminAddress: isZero(admin) ? null : admin,
+    beaconAddress: isZero(beacon) ? null : beacon,
+    slots: [
+      { slot: SLOTS.implementation, value: implSlot, label: "Implementation" },
+      { slot: SLOTS.admin, value: adminSlot, label: "Admin" },
+      { slot: SLOTS.beacon, value: beaconSlot, label: "Beacon" }
+    ],
+    bytecodeSize: (code.length - 2) / 2,
+    isProxy: type !== "unknown" && code.length > 2
+  };
+});
+electron.ipcMain.handle("decode-opcodes", async (_, bytecode) => {
+  const OPCODES = {
+    0: { name: "STOP", gas: 0 },
+    1: { name: "ADD", gas: 3 },
+    2: { name: "MUL", gas: 5 },
+    3: { name: "SUB", gas: 3 },
+    4: { name: "DIV", gas: 5 },
+    5: { name: "SDIV", gas: 5 },
+    6: { name: "MOD", gas: 5 },
+    7: { name: "SMOD", gas: 5 },
+    8: { name: "ADDMOD", gas: 8 },
+    9: { name: "MULMOD", gas: 8 },
+    10: { name: "EXP", gas: 10 },
+    11: { name: "SIGNEXTEND", gas: 5 },
+    16: { name: "LT", gas: 3 },
+    17: { name: "GT", gas: 3 },
+    18: { name: "SLT", gas: 3 },
+    19: { name: "SGT", gas: 3 },
+    20: { name: "EQ", gas: 3 },
+    21: { name: "ISZERO", gas: 3 },
+    22: { name: "AND", gas: 3 },
+    23: { name: "OR", gas: 3 },
+    24: { name: "XOR", gas: 3 },
+    25: { name: "NOT", gas: 3 },
+    26: { name: "BYTE", gas: 3 },
+    27: { name: "SHL", gas: 3 },
+    28: { name: "SHR", gas: 3 },
+    29: { name: "SAR", gas: 3 },
+    32: { name: "SHA3", gas: 30 },
+    48: { name: "ADDRESS", gas: 2 },
+    49: { name: "BALANCE", gas: 100 },
+    50: { name: "ORIGIN", gas: 2 },
+    51: { name: "CALLER", gas: 2 },
+    52: { name: "CALLVALUE", gas: 2 },
+    53: { name: "CALLDATALOAD", gas: 3 },
+    54: { name: "CALLDATASIZE", gas: 2 },
+    55: { name: "CALLDATACOPY", gas: 3 },
+    56: { name: "CODESIZE", gas: 2 },
+    57: { name: "CODECOPY", gas: 3 },
+    58: { name: "GASPRICE", gas: 2 },
+    59: { name: "EXTCODESIZE", gas: 100 },
+    60: { name: "EXTCODECOPY", gas: 100 },
+    61: { name: "RETURNDATASIZE", gas: 2 },
+    62: { name: "RETURNDATACOPY", gas: 3 },
+    63: { name: "EXTCODEHASH", gas: 100 },
+    64: { name: "BLOCKHASH", gas: 20 },
+    65: { name: "COINBASE", gas: 2 },
+    66: { name: "TIMESTAMP", gas: 2 },
+    67: { name: "NUMBER", gas: 2 },
+    68: { name: "DIFFICULTY", gas: 2 },
+    69: { name: "GASLIMIT", gas: 2 },
+    70: { name: "CHAINID", gas: 2 },
+    71: { name: "SELFBALANCE", gas: 5 },
+    80: { name: "POP", gas: 2 },
+    81: { name: "MLOAD", gas: 3 },
+    82: { name: "MSTORE", gas: 3 },
+    83: { name: "MSTORE8", gas: 3 },
+    84: { name: "SLOAD", gas: 100 },
+    85: { name: "SSTORE", gas: 100 },
+    86: { name: "JUMP", gas: 8 },
+    87: { name: "JUMPI", gas: 10 },
+    88: { name: "PC", gas: 2 },
+    89: { name: "MSIZE", gas: 2 },
+    90: { name: "GAS", gas: 2 },
+    91: { name: "JUMPDEST", gas: 1 },
+    240: { name: "CREATE", gas: 32e3 },
+    241: { name: "CALL", gas: 100 },
+    242: { name: "CALLCODE", gas: 100 },
+    243: { name: "RETURN", gas: 0 },
+    244: { name: "DELEGATECALL", gas: 100 },
+    245: { name: "CREATE2", gas: 32e3 },
+    250: { name: "STATICCALL", gas: 100 },
+    253: { name: "REVERT", gas: 0 },
+    254: { name: "INVALID", gas: 0 },
+    255: { name: "SELFDESTRUCT", gas: 5e3 }
+  };
+  for (let i2 = 0; i2 < 32; i2++) {
+    OPCODES[96 + i2] = { name: `PUSH${i2 + 1}`, gas: 3, operandBytes: i2 + 1 };
+  }
+  for (let i2 = 0; i2 < 16; i2++) OPCODES[128 + i2] = { name: `DUP${i2 + 1}`, gas: 3 };
+  for (let i2 = 0; i2 < 16; i2++) OPCODES[144 + i2] = { name: `SWAP${i2 + 1}`, gas: 3 };
+  for (let i2 = 0; i2 < 5; i2++) OPCODES[160 + i2] = { name: `LOG${i2}`, gas: 375 };
+  const hex = bytecode.startsWith("0x") ? bytecode.slice(2) : bytecode;
+  const bytes = Buffer.from(hex, "hex");
+  const result = [];
+  let i = 0;
+  while (i < bytes.length && result.length < 2e3) {
+    const byte = bytes[i];
+    const op = OPCODES[byte] || { name: `0x${byte.toString(16).padStart(2, "0")}`, gas: 0 };
+    const operandBytes = op.operandBytes || 0;
+    let operand;
+    if (operandBytes > 0 && i + operandBytes < bytes.length) {
+      operand = "0x" + bytes.slice(i + 1, i + 1 + operandBytes).toString("hex");
+    }
+    result.push({ offset: i, opcode: op.name, operand, gasCost: op.gas });
+    i += 1 + operandBytes;
+  }
+  return result;
+});
+electron.ipcMain.handle(
+  "show-open-file-dialog",
+  async (_, opts = {}) => {
+    const result = await electron.dialog.showOpenDialog(mainWindow, {
+      properties: ["openFile"],
+      title: opts.title || "Open File",
+      filters: opts.filters || [{ name: "All Files", extensions: ["*"] }]
+    });
+    return result.canceled || !result.filePaths[0] ? null : result.filePaths[0];
+  }
+);
+electron.ipcMain.handle(
+  "show-save-file-dialog",
+  async (_, opts = {}) => {
+    const result = await electron.dialog.showSaveDialog(mainWindow, {
+      defaultPath: opts.defaultPath || "untitled.txt",
+      title: opts.title || "Save File",
+      filters: opts.filters || [{ name: "All Files", extensions: ["*"] }]
+    });
+    return result.canceled ? null : result.filePath ?? null;
+  }
+);
+electron.ipcMain.handle("analyze-storage-layout", async (_, { folderPath, contractName }) => {
+  const solDirs = [
+    path.join(folderPath, "contracts"),
+    folderPath
+  ];
+  const slots = [];
+  const TYPE_SIZES = {
+    bool: 1,
+    uint8: 1,
+    int8: 1,
+    uint16: 2,
+    int16: 2,
+    uint32: 4,
+    int32: 4,
+    uint64: 8,
+    int64: 8,
+    uint128: 16,
+    int128: 16,
+    uint256: 32,
+    int256: 32,
+    uint: 32,
+    int: 32,
+    address: 20,
+    bytes1: 1,
+    bytes2: 2,
+    bytes4: 4,
+    bytes8: 8,
+    bytes16: 16,
+    bytes20: 20,
+    bytes32: 32,
+    bytes: 32,
+    string: 32
+  };
+  const scan = (dir) => {
+    if (!fs.existsSync(dir)) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === "node_modules") continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        scan(full);
+        continue;
+      }
+      if (!entry.name.endsWith(".sol")) continue;
+      try {
+        const src = fs.readFileSync(full, "utf-8");
+        const contractMatch = new RegExp(`contract\\s+${contractName}[^{]*\\{([\\s\\S]*?)^\\}`, "m").exec(src);
+        if (!contractMatch) continue;
+        const body = contractMatch[1];
+        const varRe = /^\s*(uint\d*|int\d*|bool|address|bytes\d*|string|bytes|mapping[^;]+|[A-Z]\w+)\s+(?:public\s+|private\s+|internal\s+|immutable\s+|constant\s+)*(\w+)\s*[;=]/gm;
+        let slotNum = 0;
+        let byteOffset = 0;
+        let match;
+        while ((match = varRe.exec(body)) !== null) {
+          const typeName = match[1].trim().split(/\s+/)[0];
+          const varName = match[2];
+          if (varName === "constant" || varName === "immutable") continue;
+          const bytes = TYPE_SIZES[typeName] || 32;
+          if (byteOffset + bytes > 32) {
+            slotNum++;
+            byteOffset = 0;
+          }
+          slots.push({ slot: slotNum, name: varName, type: typeName, bytes, offset: byteOffset });
+          byteOffset += bytes;
+          if (byteOffset >= 32) {
+            slotNum++;
+            byteOffset = 0;
+          }
+        }
+      } catch {
+      }
+    }
+  };
+  solDirs.forEach(scan);
+  return slots;
+});
+electron.ipcMain.handle("save-audit-notes", async (_, { folderPath, notes }) => {
+  try {
+    const p = path.join(folderPath, ".hardhat-studio", "audit-notes.json");
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, JSON.stringify(notes, null, 2), "utf-8");
+    return true;
+  } catch {
+    return false;
+  }
+});
+electron.ipcMain.handle("load-audit-notes", async (_, folderPath) => {
+  try {
+    const p = path.join(folderPath, ".hardhat-studio", "audit-notes.json");
+    if (!fs.existsSync(p)) return [];
+    return JSON.parse(fs.readFileSync(p, "utf-8"));
+  } catch {
+    return [];
+  }
+});

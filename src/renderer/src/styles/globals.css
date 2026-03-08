@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222 22% 6%;
+    --foreground: 213 18% 90%;
+    --card: 222 20% 9%;
+    --card-foreground: 213 18% 90%;
+    --popover: 222 22% 8%;
+    --popover-foreground: 213 18% 90%;
+    --primary: 30 95% 54%;
+    --primary-foreground: 222 22% 6%;
+    --secondary: 222 18% 14%;
+    --secondary-foreground: 213 14% 70%;
+    --muted: 222 18% 12%;
+    --muted-foreground: 213 12% 45%;
+    --accent: 222 18% 16%;
+    --accent-foreground: 213 18% 85%;
+    --destructive: 0 72% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 222 16% 16%;
+    --input: 222 16% 14%;
+    --ring: 30 95% 54%;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  html, body, #root {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Geist', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    font-size: 13px;
+  }
+}
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: hsl(222 16% 22%); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(222 16% 30%); }
+
+/* Fonts */
+code, pre, .font-mono { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+
+/* Terminal ANSI colors (approximate) */
+.ansi-black { color: #4a5568; }
+.ansi-red { color: #fc8181; }
+.ansi-green { color: #68d391; }
+.ansi-yellow { color: #f6e05e; }
+.ansi-blue { color: #63b3ed; }
+.ansi-magenta { color: #d6bcfa; }
+.ansi-cyan { color: #76e4f7; }
+.ansi-white { color: #e2e8f0; }
+.ansi-bright-black { color: #718096; }
+.ansi-bright-red { color: #feb2b2; }
+.ansi-bright-green { color: #9ae6b4; }
+.ansi-bright-yellow { color: #faf089; }
+.ansi-bright-blue { color: #90cdf4; }
+.ansi-bright-white { color: #f7fafc; }
+
+/* Glow effects */
+.glow-orange { box-shadow: 0 0 20px rgba(247, 147, 26, 0.25); }
+.glow-emerald { box-shadow: 0 0 16px rgba(52, 211, 153, 0.2); }
+.glow-rose { box-shadow: 0 0 16px rgba(251, 113, 133, 0.2); }
+
+/* Status indicators */
+.status-running {
+  @apply bg-emerald-400 rounded-full;
+  animation: pulse-glow 1.5s ease-in-out infinite;
+  box-shadow: 0 0 6px rgba(52, 211, 153, 0.8);
+}
+.status-error { @apply bg-rose-400 rounded-full; }
+.status-idle { @apply bg-muted-foreground/40 rounded-full; }
+
+/* Code highlighting */
+.hljs-keyword { color: #c792ea; }
+.hljs-string { color: #c3e88d; }
+.hljs-number { color: #f78c6c; }
+.hljs-comment { color: #546e7a; font-style: italic; }
+.hljs-function { color: #82aaff; }
+.hljs-title { color: #ffcb6b; }
+.hljs-type { color: #89ddff; }
+.hljs-operator { color: #89ddff; }
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
