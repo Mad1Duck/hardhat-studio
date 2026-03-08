@@ -654,10 +654,36 @@ ${path}`);
             selectedAbi={selectedAbi}
             onSelectAbi={setSelectedAbi}
             onDeployed={(c) =>
-              setDeployedContracts((prev) => [
-                c,
-                ...prev.filter((x) => x.address.toLowerCase() !== c.address.toLowerCase()),
-              ])
+              setDeployedContracts((prev) => {
+                const existingIdx = prev.findIndex(
+                  (x) =>
+                    x.name.toLowerCase() === c.name.toLowerCase() &&
+                    x.network === c.network &&
+                    x.rpcUrl === c.rpcUrl,
+                );
+                if (existingIdx === -1) {
+                  return [{ ...c, version: 1, previousVersions: [] }, ...prev];
+                }
+                const existing = prev[existingIdx];
+                if (existing.address.toLowerCase() === c.address.toLowerCase()) return prev;
+                const prevVersions = existing.previousVersions ?? [];
+                const newVersion = (existing.version ?? 1) + 1;
+                const archived = {
+                  version: existing.version ?? 1,
+                  address: existing.address,
+                  txHash: existing.txHash,
+                  deployedAt: existing.deployedAt,
+                };
+                const updated = {
+                  ...c,
+                  id: existing.id,
+                  version: newVersion,
+                  previousVersions: [archived, ...prevVersions].slice(0, 10),
+                };
+                const next = [...prev];
+                next.splice(existingIdx, 1);
+                return [updated, ...next];
+              })
             }
             onTxRecorded={(tx) => setTxHistory((prev) => [tx, ...prev.slice(0, 499)])}
             defaultRpcUrl={rpcUrl}

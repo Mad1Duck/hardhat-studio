@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { DeployedContract } from '../../types'
 import { Button } from '../ui/button'
 import { ScrollArea } from '../ui/primitives'
-import { GitBranch, Trash2, Zap, Copy, ExternalLink, ChevronDown, ChevronRight, Clock, Hash, Fuel, Globe } from 'lucide-react'
+import { GitBranch, Trash2, Zap, Copy, ExternalLink, ChevronDown, ChevronRight, Clock, Hash, Fuel, Globe, History, RefreshCw } from 'lucide-react'
 import { cn } from '../../lib/utils'
 
 interface Props {
@@ -13,6 +13,7 @@ interface Props {
 
 export default function DeployedContracts({ contracts, onRemove, onInteract }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [showHistory, setShowHistory] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
 
   const copy = (text: string, id: string) => {
@@ -68,9 +69,24 @@ export default function DeployedContracts({ contracts, onRemove, onInteract }: P
                     <span className="text-[10px] font-mono font-bold text-orange-400">{c.name.slice(0, 2).toUpperCase()}</span>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-semibold text-foreground">{c.name}</span>
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground/60 font-mono">{c.network}</span>
+                      {/* Version badge */}
+                      {(c.version ?? 1) > 1 ? (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 font-mono font-semibold">
+                          v{c.version}
+                        </span>
+                      ) : (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400/60 border border-emerald-500/15 font-mono">
+                          v1
+                        </span>
+                      )}
+                      {(c.previousVersions?.length ?? 0) > 0 && (
+                        <span className="text-[9px] text-amber-400/50 font-mono">
+                          ({c.previousVersions!.length} prev)
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-1 mt-0.5">
                       <span className="text-[11px] font-mono text-muted-foreground/60">{c.address.slice(0, 14)}…{c.address.slice(-8)}</span>
@@ -156,10 +172,61 @@ export default function DeployedContracts({ contracts, onRemove, onInteract }: P
                           <ExternalLink className="w-3 h-3" /> Explorer
                         </Button>
                       )}
+                      {(c.previousVersions?.length ?? 0) > 0 && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs px-2 gap-1"
+                          onClick={() => setShowHistory(showHistory === c.id ? null : c.id)}
+                          title="View deployment history"
+                        >
+                          <History className="w-3 h-3" />
+                        </Button>
+                      )}
                       <Button size="sm" variant="destructive" className="h-7 text-xs px-2" onClick={() => onRemove(c.id)}>
                         <Trash2 className="w-3 h-3" />
                       </Button>
                     </div>
+
+                    {/* Version history panel */}
+                    {showHistory === c.id && (c.previousVersions?.length ?? 0) > 0 && (
+                      <div className="mt-3 pt-3 border-t border-border/50">
+                        <p className="text-[9px] text-muted-foreground/40 uppercase tracking-widest font-mono mb-2 flex items-center gap-1">
+                          <History className="w-3 h-3" /> Deployment History
+                        </p>
+                        <div className="space-y-1.5">
+                          {/* Current version */}
+                          <div className="flex items-center gap-2 px-2 py-1.5 rounded bg-orange-500/8 border border-orange-500/20 text-[10px]">
+                            <span className="text-[8px] px-1 py-0.5 rounded bg-orange-500/20 text-orange-400 font-mono font-bold flex-shrink-0">
+                              v{c.version ?? 1} CURRENT
+                            </span>
+                            <span className="font-mono text-foreground/70 truncate flex-1">{c.address.slice(0, 12)}…{c.address.slice(-6)}</span>
+                            <button onClick={() => copy(c.address, `hist-cur-${c.id}`)} className="text-muted-foreground/30 hover:text-muted-foreground flex-shrink-0">
+                              <Copy className="w-2.5 h-2.5" />
+                            </button>
+                            <span className="text-muted-foreground/30 flex-shrink-0 text-[8px]">
+                              {new Date(c.deployedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          {/* Previous versions */}
+                          {c.previousVersions!.map((pv) => (
+                            <div key={pv.version} className="flex items-center gap-2 px-2 py-1.5 rounded bg-muted/20 border border-border/40 text-[10px] opacity-70">
+                              <span className="text-[8px] px-1 py-0.5 rounded bg-muted text-muted-foreground/50 font-mono flex-shrink-0">
+                                v{pv.version}
+                              </span>
+                              <span className="font-mono text-muted-foreground/60 truncate flex-1">{pv.address.slice(0, 12)}…{pv.address.slice(-6)}</span>
+                              <button onClick={() => copy(pv.address, `hist-${c.id}-${pv.version}`)} className="text-muted-foreground/30 hover:text-muted-foreground flex-shrink-0">
+                                <Copy className="w-2.5 h-2.5" />
+                              </button>
+                              {copied === `hist-${c.id}-${pv.version}` && <span className="text-[8px] text-emerald-400">Copied!</span>}
+                              <span className="text-muted-foreground/30 flex-shrink-0 text-[8px]">
+                                {new Date(pv.deployedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
