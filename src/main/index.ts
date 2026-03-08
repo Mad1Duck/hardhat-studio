@@ -410,6 +410,7 @@ ipcMain.handle('git-pull', async (_, cwd: string) => {
 
 // ─── Hardhat accounts ─────────────────────────────────────────────────────────
 ipcMain.handle('get-hardhat-accounts', async (_, rpcUrl: string) => {
+  // All 20 standard Hardhat default accounts (mnemonic: "test test test test test test test test test test test junk")
   const DEFAULT_ACCOUNTS = [
     { address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266', privateKey: '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80' },
     { address: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8', privateKey: '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d' },
@@ -421,6 +422,7 @@ ipcMain.handle('get-hardhat-accounts', async (_, rpcUrl: string) => {
     { address: '0x14dC79964da2C08b23698B3D3cc7Ca32193d9955', privateKey: '0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356' },
     { address: '0x23618e81E3f5cdF7f54C3d65f7FBc0aBf5B21E8f', privateKey: '0xdbda1821b80551c9d65939329250132c444b4a15823c01d4b8a5e64d03c5a8a5' },
     { address: '0xa0Ee7A142d267C1f36714E4a8F75612F20a79720', privateKey: '0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6' },
+    // Accounts 10–19
     { address: '0xBcd4042DE499D14e55001CcbB24a551F3b954096', privateKey: '0xf214f2b2cd398c806f84e317254e0f0b801d0643303237d97a22a48e01628897' },
     { address: '0x71bE63f3384f5fb98995898A86B02Fb2426c5788', privateKey: '0x701b615bbdfb9de65240bc28bd21bbc0d996645a3dd57e7b12bc2bdf6f192c82' },
     { address: '0xFABB0ac9d68B0B445fB7357272Ff202C5651694a', privateKey: '0xa267530f49f8280200edf313ee7af6b827f2a8bce2897751d06a843f644967b1' },
@@ -442,7 +444,7 @@ ipcMain.handle('get-hardhat-accounts', async (_, rpcUrl: string) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_accounts', params: [] }),
     });
-    const data = await res.json() as { result?: string[]; error?: { message: string; }; };
+    const data = await res.json() as { result?: string[]; error?: { message: string } };
     if (data.result && Array.isArray(data.result) && data.result.length > 0) {
       const liveAddresses: string[] = data.result;
       // Build a lookup from our known list (lower-case address → entry)

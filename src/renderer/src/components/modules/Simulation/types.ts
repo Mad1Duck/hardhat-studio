@@ -88,7 +88,9 @@ export interface SimContext {
   setUsers: React.Dispatch<React.SetStateAction<SimUser[]>>;
   onTxRecorded: (tx: any) => void;
   sleep: (ms: number) => Promise<void>;
-  callContract: (contractName: string, fn: string, args: any[], signer?: string) => Promise<{ ok: boolean; result?: any; error?: string; gasUsed?: string; txHash?: string; }>;
+  callContract: (contractName: string, fn: string, args: any[], signer?: string, rawAmounts?: boolean) => Promise<{ ok: boolean; result?: any; error?: string; gasUsed?: string; txHash?: string; resolvedContract?: string; decimals?: number }>;
+  /** Returns the decimals of the first matching deployed ERC20 contract */
+  getContractDecimals: (contractName: string) => Promise<number>;
   checkSupport: (required: string[]) => ContractSupport;
 }
 
@@ -134,7 +136,7 @@ export const makeUser = (index: number, label?: string): SimUser => ({
   address: HH_ACCOUNTS[index % HH_ACCOUNTS.length].address,
   privateKey: HH_ACCOUNTS[index % HH_ACCOUNTS.length].privateKey,
   label: label || `User ${index + 1}`,
-  balanceETH: 10000,
+  balanceETH: 0,
   balanceToken: 0,
   balanceNFT: [],
   balanceCollateral: 0,

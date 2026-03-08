@@ -212,13 +212,23 @@ export const TokenModule: SimModule = {
     const fee = parseFloat(p.fee) || 0;
     const cap = parseFloat(p.supplyCap) || 0;
 
-    ctx.log('info', 'ERC20', `🚀 Token simulation: ${p.scenario}`);
+    // ── Detect connected token contract & its decimals ─────────────────────
+    // callContract will auto-scale amounts by decimals, so we work in human-
+    // readable units throughout and let the RPC layer handle raw encoding.
+    const decimals = await ctx.getContractDecimals('ERC20Token');
+    const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 6 });
+
+    // Probe which contract will be used
+    const probe = await ctx.callContract('ERC20Token', 'totalSupply', []);
+    const contractLabel = probe.resolvedContract ? `[${probe.resolvedContract}]` : '[contract]';
+    ctx.log('info', 'ERC20', `🚀 Token simulation: ${p.scenario} | using ${contractLabel} (${decimals} decimals)`);
     await ctx.sleep(200);
 
-    // Mint phase
+    // ── Mint phase ────────────────────────────────────────────────────────
     for (const [i, u] of ctx.users.entries()) {
       if (ctx.stop()) return;
       await ctx.sleep(300);
+      // callContract auto-scales mint amount by decimals
       const r = await ctx.callContract(
         'ERC20Token',
         'mint',
@@ -226,16 +236,9 @@ export const TokenModule: SimModule = {
         ctx.users[0].privateKey,
       );
       if (r.ok) {
-        ctx.log('mint', u.label, `Minted ${mint.toLocaleString()} tokens`, mint, true, true);
+        ctx.log('mint', u.label, `Minted ${fmt(mint)} tokens on-chain`, mint, true, true);
       } else {
-        ctx.log(
-          'mint',
-          u.label,
-          `Minted ${mint.toLocaleString()} tokens (simulated)`,
-          mint,
-          true,
-          false,
-        );
+        ctx.log('mint', u.label, `Mint simulated: ${fmt(mint)} tokens (${r.error || 'sim mode'})`, mint, true, false);
       }
       ctx.setUsers((prev) =>
         prev.map((x, j) => (j === i ? { ...x, balanceToken: x.balanceToken + mint } : x)),
@@ -249,16 +252,15 @@ export const TokenModule: SimModule = {
       ctx.log(
         'info',
         'ERC20',
-        `Supply cap: ${cap.toLocaleString()} | Current: ${total.toLocaleString()} | ${total >= cap ? '⚠️ AT CAP' : '✅ Under cap'}`,
+        `Supply cap: ${fmt(cap)} | Minted: ${fmt(total)} | ${total >= cap ? '⚠️ AT CAP' : '✅ Under cap'}`,
       );
       await ctx.sleep(200);
     }
 
-    // Transfer with optional fee
+    // ── Transfer with optional fee ────────────────────────────────────────
     if (!ctx.stop() && ctx.users.length >= 2) {
       await ctx.sleep(400);
-      const from = ctx.users[0],
-        to = ctx.users[1];
+      const from = ctx.users[0], to = ctx.users[1];
       const feeAmt = (transfer * fee) / 100;
       const received = transfer - feeAmt;
       const r = await ctx.callContract(
@@ -270,48 +272,52 @@ export const TokenModule: SimModule = {
       ctx.log(
         'transfer',
         from.label,
-        `→ ${to.label}: ${transfer} tokens${feeAmt > 0 ? ` (fee: ${feeAmt.toFixed(2)})` : ''}`,
+        `→ ${to.label}: ${fmt(transfer)} tokens${feeAmt > 0 ? ` (fee: ${feeAmt.toFixed(4)})` : ''}`,
         transfer,
         true,
         r.ok,
       );
       ctx.setUsers((prev) =>
         prev.map((x, j) => {
-          if (j === 0) return { ...x, balanceToken: x.balanceToken - transfer };
+          if (j === 0) return { ...x, balanceToken: Math.max(0, x.balanceToken - transfer) };
           if (j === 1) return { ...x, balanceToken: x.balanceToken + received };
           return x;
         }),
       );
     }
 
-    // Approve + transferFrom
+    // ── Approve + transferFrom ────────────────────────────────────────────
     if (!ctx.stop() && ctx.users.length >= 3) {
       await ctx.sleep(400);
-      const owner = ctx.users[1],
-        spender = ctx.users[2];
-      await ctx.callContract('ERC20Token', 'approve', [spender.address, 200], owner.privateKey);
-      ctx.log('approve', owner.label, `Approved ${spender.label} to spend 200 tokens`);
+      const owner = ctx.users[1], spender = ctx.users[2];
+      const allowAmt = Math.min(200, owner.balanceToken);
+      const spendAmt = Math.min(100, allowAmt);
+      await ctx.callContract('ERC20Token', 'approve', [spender.address, allowAmt], owner.privateKey);
+      ctx.log('approve', owner.label, `Approved ${spender.label} for ${fmt(allowAmt)} tokens`);
       await ctx.sleep(300);
-      await ctx.callContract(
+      const r2 = await ctx.callContract(
         'ERC20Token',
         'transferFrom',
-        [owner.address, spender.address, 100],
+        [owner.address, spender.address, spendAmt],
         spender.privateKey,
       );
       ctx.log(
         'transfer',
         spender.label,
-        `transferFrom ${owner.label}: 100 tokens (allowance)`,
-        100,
-        true,
+        `transferFrom ${owner.label}: ${fmt(spendAmt)} tokens (via allowance)`,
+        spendAmt,
+        r2.ok,
+        r2.ok,
       );
-      ctx.setUsers((prev) =>
-        prev.map((x, j) => {
-          if (j === 1) return { ...x, balanceToken: x.balanceToken - 100 };
-          if (j === 2) return { ...x, balanceToken: x.balanceToken + 100 };
-          return x;
-        }),
-      );
+      if (r2.ok) {
+        ctx.setUsers((prev) =>
+          prev.map((x, j) => {
+            if (j === 1) return { ...x, balanceToken: Math.max(0, x.balanceToken - spendAmt) };
+            if (j === 2) return { ...x, balanceToken: x.balanceToken + spendAmt };
+            return x;
+          }),
+        );
+      }
     }
 
     // Scenario-specific
@@ -334,32 +340,34 @@ export const TokenModule: SimModule = {
         [target.address, 100],
         ctx.users[0].privateKey,
       );
-      ctx.log('error', target.label, `Transfer to blacklisted address → REVERTED`, 0, false, r.ok);
+      ctx.log('error', target.label, `Transfer to blacklisted address → ${r.ok ? 'unexpectedly succeeded' : 'REVERTED ✓'}`, 0, !r.ok, r.ok);
     }
 
-    // Burn phase
+    // ── Burn phase ────────────────────────────────────────────────────────
     if (!ctx.stop()) {
       await ctx.sleep(400);
       const u = ctx.users[0];
-      const burnAmt = (u.balanceToken * burnPct) / 100;
-      const r = await ctx.callContract('ERC20Token', 'burn', [burnAmt], u.privateKey);
-      ctx.log(
-        'burn',
-        u.label,
-        `🔥 Burned ${burnAmt.toFixed(0)} tokens (${burnPct}%)`,
-        burnAmt,
-        true,
-        r.ok,
-      );
-      ctx.setUsers((prev) =>
-        prev.map((x, j) =>
-          j === 0 ? { ...x, balanceToken: Math.max(0, x.balanceToken - burnAmt) } : x,
-        ),
-      );
-      ctx.setPool((prev) => ({
-        ...prev,
-        tokenTotalSupply: Math.max(0, prev.tokenTotalSupply - burnAmt),
-      }));
+      const burnAmt = Math.max(0, (u.balanceToken * burnPct) / 100);
+      if (burnAmt > 0) {
+        const r = await ctx.callContract('ERC20Token', 'burn', [burnAmt], u.privateKey);
+        ctx.log(
+          'burn',
+          u.label,
+          `🔥 Burned ${fmt(burnAmt)} tokens (${burnPct}%)`,
+          burnAmt,
+          true,
+          r.ok,
+        );
+        ctx.setUsers((prev) =>
+          prev.map((x, j) =>
+            j === 0 ? { ...x, balanceToken: Math.max(0, x.balanceToken - burnAmt) } : x,
+          ),
+        );
+        ctx.setPool((prev) => ({
+          ...prev,
+          tokenTotalSupply: Math.max(0, prev.tokenTotalSupply - burnAmt),
+        }));
+      }
     }
 
     ctx.log('success', 'ERC20', '✅ Token simulation complete');
