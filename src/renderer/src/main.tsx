@@ -4,16 +4,16 @@ import App from './App'
 import './styles/globals.css'
 import { TooltipProvider } from './components/ui/tooltip'
 import { ThemeProvider } from './context/ThemeContext'
-import { LicenseProvider } from './context/LicenseContext'
+import { SablierProvider } from './context/SablierContext'
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <ThemeProvider>
-      <LicenseProvider>
+      <SablierProvider>
         <TooltipProvider delayDuration={400}>
           <App />
         </TooltipProvider>
-      </LicenseProvider>
+      </SablierProvider>
     </ThemeProvider>
   </React.StrictMode>
 )

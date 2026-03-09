@@ -21,7 +21,8 @@
     "mermaid": "^11.12.3",
     "quill": "^2.0.3",
     "react-quill": "^2.0.0",
-    "recharts": "^3.8.0"
+    "recharts": "^3.8.0",
+    "viem": "^2.21.0"
   },
   "devDependencies": {
     "@radix-ui/react-dialog": "^1.0.5",
