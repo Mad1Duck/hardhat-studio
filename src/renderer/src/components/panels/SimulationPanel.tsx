@@ -99,14 +99,24 @@ async function rpcCall(url: string, method: string, params: any[] = []) {
 function checkContractSupport(
   deployedContracts: DeployedContract[],
   requiredMethods: string[],
+  abis?: ContractAbi[],
 ): ContractSupport {
   if (requiredMethods.length === 0) return { supported: true, missing: [], suggestions: [] };
   const allMethods = new Set<string>();
-  deployedContracts.forEach((dc) =>
-    dc.abi.forEach((item: any) => {
+  // Enrich inline: if a deployed contract has empty ABI, look up from artifacts
+  deployedContracts.forEach((dc) => {
+    const abiToUse =
+      dc.abi.length > 0
+        ? dc.abi
+        : (abis?.find(
+            (a) =>
+              a.contractName.toLowerCase() === dc.name.toLowerCase() ||
+              a.name.toLowerCase() === dc.name.toLowerCase(),
+          )?.abi ?? []);
+    abiToUse.forEach((item: any) => {
       if (item.type === 'function') allMethods.add(item.name);
-    }),
-  );
+    });
+  });
   const missing = requiredMethods.filter((m) => !allMethods.has(m));
   return { supported: missing.length === 0, missing, suggestions: [] };
 }
@@ -114,7 +124,11 @@ function checkContractSupport(
 // ─── Token decimal cache ─────────────────────────────────────────────────────
 const _decimalsCache = new Map<string, number>();
 
-async function getTokenDecimals(rpcUrl: string, contractAddress: string, abi: any[]): Promise<number> {
+async function getTokenDecimals(
+  rpcUrl: string,
+  contractAddress: string,
+  abi: any[],
+): Promise<number> {
   const key = contractAddress.toLowerCase();
   if (_decimalsCache.has(key)) return _decimalsCache.get(key)!;
   try {
@@ -133,17 +147,26 @@ async function getTokenDecimals(rpcUrl: string, contractAddress: string, abi: an
 
 // ERC20 token-amount function names — these args should be scaled by decimals
 const TOKEN_AMOUNT_FNS = new Set([
-  'mint', 'burn', 'transfer', 'transferFrom', 'approve',
-  'deposit', 'withdraw', 'stake', 'unstake', 'repay', 'borrow',
+  'mint',
+  'burn',
+  'transfer',
+  'transferFrom',
+  'approve',
+  'deposit',
+  'withdraw',
+  'stake',
+  'unstake',
+  'repay',
+  'borrow',
 ]);
 
 // Arg indices that carry token amounts (for each function)
 const TOKEN_AMOUNT_ARGS: Record<string, number[]> = {
-  mint: [1],            // mint(to, amount)
-  burn: [0],            // burn(amount)
-  transfer: [1],        // transfer(to, amount)
-  transferFrom: [2],    // transferFrom(from, to, amount)
-  approve: [1],         // approve(spender, amount)
+  mint: [1], // mint(to, amount)
+  burn: [0], // burn(amount)
+  transfer: [1], // transfer(to, amount)
+  transferFrom: [2], // transferFrom(from, to, amount)
+  approve: [1], // approve(spender, amount)
   deposit: [0],
   withdraw: [0],
   stake: [0],
@@ -152,18 +175,17 @@ const TOKEN_AMOUNT_ARGS: Record<string, number[]> = {
   borrow: [0],
 };
 
-// ─── Contract scoring for resolution — prefer non-mock/non-production contracts ──
+// ─── Contract scoring for resolution ──────────────────────────────────────────
+// Note: we no longer penalise "mock" names — users may intentionally deploy
+// Mock* contracts (e.g. MockIDRX) and the explicit selector lets them pick it.
 function scoreContractMatch(name: string, contractName: string): number {
   let score = 0;
   const n = name.toLowerCase();
   const q = contractName.toLowerCase();
   if (n === q) score += 100;
   else if (n.includes(q) || q.includes(n)) score += 50;
-  // Prefer "simulation-like" names
-  if (n.includes('sim') || n.includes('test') || n.includes('demo')) score += 20;
-  // Deprioritize known mock/production tokens
-  if (n.includes('mock') || n.includes('usdc') || n.includes('usdt') ||
-      n.includes('dai') || n.includes('weth') || n.includes('wbtc')) score -= 30;
+  // Prefer "simulation-like" names slightly
+  if (n.includes('sim') || n.includes('test') || n.includes('demo')) score += 10;
   return score;
 }
 
@@ -177,7 +199,17 @@ async function callDeployedContract(
   signerPk?: string,
   /** Pass true to skip decimal scaling (e.g., already in raw units) */
   rawAmounts = false,
-): Promise<{ ok: boolean; result?: any; error?: string; gasUsed?: string; txHash?: string; resolvedContract?: string; decimals?: number }> {
+  /** When set, bypass name-scoring and use this specific contract address directly (user-selected) */
+  forcedAddress?: string,
+): Promise<{
+  ok: boolean;
+  result?: any;
+  error?: string;
+  gasUsed?: string;
+  txHash?: string;
+  resolvedContract?: string;
+  decimals?: number;
+}> {
   // Special Hardhat RPC methods
   if (contractName === 'Hardhat') {
     try {
@@ -188,35 +220,39 @@ async function callDeployedContract(
     }
   }
 
-  // ── Smart contract resolution with scoring ─────────────────────────────────
-  // Candidates: exact/fuzzy name match OR ABI-based (has the function)
-  const candidates = deployedContracts.filter(
-    (c) =>
-      c.name === contractName ||
-      c.name.toLowerCase().includes(contractName.toLowerCase()) ||
-      contractName.toLowerCase().includes(c.name.toLowerCase()) ||
-      c.abi.some((item: any) => item.type === 'function' && item.name === fn),
-  );
+  // ── Smart contract resolution ──────────────────────────────────────────────
+  // If the user explicitly picked a contract, use it directly — no scoring.
+  let dc: DeployedContract | undefined;
 
-  if (candidates.length === 0) {
-    return { ok: false, error: `No deployed contract found with function "${fn}()" — deploy a compatible contract first` };
+  if (forcedAddress) {
+    dc = deployedContracts.find((c) => c.address.toLowerCase() === forcedAddress.toLowerCase());
+    if (!dc) {
+      return {
+        ok: false,
+        error: `Selected contract at ${forcedAddress} not found in deployed list`,
+      };
+    }
+  } else {
+    // Auto-resolve: exact/fuzzy name match OR ABI-based (has the function)
+    const candidates = deployedContracts.filter(
+      (c) =>
+        c.name === contractName ||
+        c.name.toLowerCase().includes(contractName.toLowerCase()) ||
+        contractName.toLowerCase().includes(c.name.toLowerCase()) ||
+        c.abi.some((item: any) => item.type === 'function' && item.name === fn),
+    );
+
+    if (candidates.length === 0) {
+      return {
+        ok: false,
+        error: `No deployed contract found with function "${fn}()" — deploy a compatible contract first`,
+      };
+    }
+
+    const scored = candidates.map((c) => ({ c, score: scoreContractMatch(c.name, contractName) }));
+    scored.sort((a, b) => b.score - a.score);
+    dc = scored[0].c;
   }
-
-  // Pick highest-scoring candidate
-  const scored = candidates.map((c) => ({ c, score: scoreContractMatch(c.name, contractName) }));
-  scored.sort((a, b) => b.score - a.score);
-  const best = scored[0];
-
-  // If best candidate has a clearly negative score (only mock/stablecoin found),
-  // refuse to execute — fall back to simulation mode so we don't pollute real tokens
-  if (best.score < 0) {
-    return {
-      ok: false,
-      error: `No suitable contract found for "${fn}()" — available candidates look like mock/production tokens (${candidates.map(c => c.name).join(', ')}). Deploy a simulation contract or the simulation will run in mock mode.`,
-    };
-  }
-
-  const dc = best.c;
 
   const fnDef = dc.abi.find((i: any) => i.name === fn && i.type === 'function');
   if (!fnDef) return { ok: false, error: `Function "${fn}" not in ABI of ${dc.name}` };
@@ -241,7 +277,10 @@ async function callDeployedContract(
     const scaleIndices = needsScale ? (TOKEN_AMOUNT_ARGS[fn] ?? []) : [];
 
     const parsedArgs = args.map((a, idx) => {
-      if (scaleIndices.includes(idx) && (typeof a === 'number' || (typeof a === 'string' && /^[\d.]+$/.test(a)))) {
+      if (
+        scaleIndices.includes(idx) &&
+        (typeof a === 'number' || (typeof a === 'string' && /^[\d.]+$/.test(a)))
+      ) {
         // Scale human-readable amount → raw token units
         const human = typeof a === 'string' ? parseFloat(a) : a;
         const d = BigInt(10) ** BigInt(decimals);
@@ -389,15 +428,24 @@ export default function SimulationPanel({ abis, deployedContracts, rpcUrl, onTxR
     new Set(MODULE_CATEGORIES.map((c) => c.id)),
   );
   const [paramValues, setParamValues] = useState<Record<string, Record<string, string>>>({});
-  const initialUsers = [makeUser(0, 'Alice'), makeUser(1, 'Bob'), makeUser(2, 'Charlie'), makeUser(3, 'Dave')];
+  const initialUsers = [
+    makeUser(0, 'Alice'),
+    makeUser(1, 'Bob'),
+    makeUser(2, 'Charlie'),
+    makeUser(3, 'Dave'),
+  ];
   const [users, setUsers] = useState<SimUser[]>(initialUsers);
   const [pool, setPool] = useState<PoolState>(defaultPool());
 
   // ── Refs so simulation always reads latest state ───────────────────────────
   const usersRef = useRef<SimUser[]>(users);
   const poolRef = useRef<PoolState>(pool);
-  useEffect(() => { usersRef.current = users; }, [users]);
-  useEffect(() => { poolRef.current = pool; }, [pool]);
+  useEffect(() => {
+    usersRef.current = users;
+  }, [users]);
+  useEffect(() => {
+    poolRef.current = pool;
+  }, [pool]);
 
   const activeModule = ALL_MODULES.find((m) => m.id === activeModuleId)!;
 
@@ -406,24 +454,90 @@ export default function SimulationPanel({ abis, deployedContracts, rpcUrl, onTxR
   const [contractSelections, setContractSelections] = useState<Record<string, string>>({});
 
   const setModuleContract = (moduleId: string, contractId: string) =>
-    setContractSelections(prev => ({ ...prev, [moduleId]: contractId }));
+    setContractSelections((prev) => ({ ...prev, [moduleId]: contractId }));
 
-  // Get contracts compatible with a given module (have at least 1 required method)
-  const getCompatibleContracts = (moduleId: string) => {
-    const mod = ALL_MODULES.find(m => m.id === moduleId);
-    if (!mod || mod.requiredMethods.length === 0) return deployedContracts;
-    return deployedContracts.filter(dc => {
-      const abiFns = dc.abi.filter((i: any) => i.type === 'function').map((i: any) => i.name);
-      return mod.requiredMethods.some(req => abiFns.includes(req));
-    });
+  // ── ABI enrichment ────────────────────────────────────────────────────────
+  // When a contract is deployed via script, the ABI can be empty ([]) if the
+  // artifact name didn't match at deploy time.  We patch it on-the-fly using
+  // the `abis` prop (loaded from the Hardhat artifact files).
+  const enrichedContracts: DeployedContract[] = deployedContracts.map((dc) => {
+    if (dc.abi && dc.abi.length > 0) return dc; // already has ABI
+    const match = abis.find(
+      (a) =>
+        a.contractName.toLowerCase() === dc.name.toLowerCase() ||
+        a.name.toLowerCase() === dc.name.toLowerCase(),
+    );
+    if (!match) return dc;
+    return { ...dc, abi: match.abi as any };
+  });
+
+  // Compute per-contract compatibility status for a given module
+  const getContractCompatibility = (
+    dc: DeployedContract,
+    moduleId: string,
+  ): 'full' | 'partial' | 'none' => {
+    const mod = ALL_MODULES.find((m) => m.id === moduleId);
+    if (!mod || mod.requiredMethods.length === 0) return 'full';
+    const abiFns = new Set(
+      dc.abi.filter((i: any) => i.type === 'function').map((i: any) => i.name as string),
+    );
+    const matched = mod.requiredMethods.filter((r) => abiFns.has(r));
+    if (matched.length === mod.requiredMethods.length) return 'full';
+    if (matched.length > 0) return 'partial';
+    return 'none';
   };
 
+  // All deployed contracts are shown in the selector; we classify each one
   // The actively selected (or auto-picked) contract for the active module
-  const compatibleForActive = getCompatibleContracts(activeModuleId);
   const selectedContractId = contractSelections[activeModuleId] ?? '';
+  // Auto-pick: prefer first fully-compatible, then first partial, else nothing
+  const autoPickedContract = (() => {
+    if (enrichedContracts.length === 0) return null;
+    const full = enrichedContracts.find(
+      (dc) => getContractCompatibility(dc, activeModuleId) === 'full',
+    );
+    if (full) return full;
+    const partial = enrichedContracts.find(
+      (dc) => getContractCompatibility(dc, activeModuleId) === 'partial',
+    );
+    return partial ?? null;
+  })();
   const selectedSimContract = selectedContractId
-    ? deployedContracts.find(c => c.id === selectedContractId) ?? null
-    : compatibleForActive.length === 1 ? compatibleForActive[0] : null;
+    ? (enrichedContracts.find((c) => c.id === selectedContractId) ?? null)
+    : autoPickedContract;
+  // For backward compat: "compatible" = full + partial
+  const compatibleForActive = enrichedContracts.filter(
+    (dc) =>
+      getContractCompatibility(dc, activeModuleId) !== 'none' ||
+      activeModule?.requiredMethods.length === 0,
+  );
+
+  // ── Can the simulation run? ────────────────────────────────────────────────
+  // Blocked when a contract is selected but still has missing required methods.
+  const selectedCompat = selectedSimContract
+    ? getContractCompatibility(selectedSimContract, activeModuleId)
+    : null;
+
+  // Missing methods on the currently selected contract (for Run button tooltip)
+  const missingOnSelected: string[] = (() => {
+    if (!selectedSimContract || !activeModule) return [];
+    const abiFns = new Set(
+      selectedSimContract.abi
+        .filter((i: any) => i.type === 'function')
+        .map((i: any) => i.name as string),
+    );
+    return activeModule.requiredMethods.filter((m) => !abiFns.has(m));
+  })();
+
+  // canRun = true when:
+  //   • module has no required methods (infra/network sims), OR
+  //   • no contracts deployed at all (pure mock mode), OR
+  //   • selected contract is fully compatible (zero missing methods)
+  const canRun =
+    !activeModule ||
+    activeModule.requiredMethods.length === 0 ||
+    enrichedContracts.length === 0 ||
+    missingOnSelected.length === 0;
 
   // Initialize param values
   useEffect(() => {
@@ -453,110 +567,150 @@ export default function SimulationPanel({ abis, deployedContracts, rpcUrl, onTxR
   };
 
   // ── Sync on-chain token balances for all users after real txs ──────────────
-  const syncOnChainBalances = useCallback(async (currentUsers: SimUser[]) => {
-    if (!deployedContracts.length) return;
-    try {
-      const { ethers } = await import('ethers');
-      const provider = new ethers.JsonRpcProvider(rpcUrl);
+  const syncOnChainBalances = useCallback(
+    async (currentUsers: SimUser[]) => {
+      if (!deployedContracts.length) return;
+      try {
+        const { ethers } = await import('ethers');
+        const provider = new ethers.JsonRpcProvider(rpcUrl);
 
-      // Use explicitly selected contract or auto-pick best match
-      const erc20Candidates = deployedContracts.filter((dc) =>
-        dc.abi.some((i: any) => i.type === 'function' && i.name === 'balanceOf'),
-      );
-      const tokenContract = selectedSimContract ?? (erc20Candidates.length > 0
-        ? erc20Candidates.reduce((best, c) => {
-            const score = (n: string) => {
-              let s = 0;
-              const nl = n.toLowerCase();
-              if (nl.includes('sim') || nl.includes('token') || nl.includes('test')) s += 20;
-              if (nl.includes('mock') || nl.includes('usdc') || nl.includes('usdt') || nl.includes('dai')) s -= 10;
-              return s;
-            };
-            return score(c.name) >= score(best.name) ? c : best;
-          })
-        : null);
+        // Use explicitly selected contract or auto-pick best match
+        const erc20Candidates = enrichedContracts.filter((dc) =>
+          dc.abi.some((i: any) => i.type === 'function' && i.name === 'balanceOf'),
+        );
+        const tokenContract =
+          selectedSimContract ??
+          (erc20Candidates.length > 0
+            ? erc20Candidates.reduce((best, c) => {
+                const score = (n: string) => {
+                  let s = 0;
+                  const nl = n.toLowerCase();
+                  if (nl.includes('sim') || nl.includes('token') || nl.includes('test')) s += 20;
+                  if (
+                    nl.includes('mock') ||
+                    nl.includes('usdc') ||
+                    nl.includes('usdt') ||
+                    nl.includes('dai')
+                  )
+                    s -= 10;
+                  return s;
+                };
+                return score(c.name) >= score(best.name) ? c : best;
+              })
+            : null);
 
-      await Promise.all(currentUsers.map(async (u, idx) => {
-        // Always fetch ETH balance
-        try {
-          const ethBal = await provider.getBalance(u.address);
-          const ethNum = parseFloat(ethers.formatEther(ethBal));
-          setUsers((prev) => prev.map((x, j) => j === idx ? { ...x, balanceETH: ethNum } : x));
-        } catch {}
+        await Promise.all(
+          currentUsers.map(async (u, idx) => {
+            // Always fetch ETH balance
+            try {
+              const ethBal = await provider.getBalance(u.address);
+              const ethNum = parseFloat(ethers.formatEther(ethBal));
+              setUsers((prev) =>
+                prev.map((x, j) => (j === idx ? { ...x, balanceETH: ethNum } : x)),
+              );
+            } catch {}
 
-        // Fetch ERC20 balance if contract available
-        if (tokenContract) {
-          try {
-            const contract = new ethers.Contract(tokenContract.address, tokenContract.abi, provider);
-            const raw = await contract.balanceOf(u.address);
-            const decimals = await getTokenDecimals(rpcUrl, tokenContract.address, tokenContract.abi);
-            const formatted = parseFloat(ethers.formatUnits(raw, decimals));
-            setUsers((prev) => prev.map((x, j) => j === idx ? { ...x, balanceToken: formatted } : x));
-          } catch {}
-        }
-      }));
-    } catch {}
-  }, [rpcUrl, deployedContracts]);
-
-  // Build simulation context — uses refs so ctx.users is always current
-  const buildContext = useCallback(
-    (): SimContext => {
-      // Wrap setUsers to keep ref in sync
-      const setUsersWrapped: typeof setUsers = (updater) => {
-        setUsers((prev) => {
-          const next = typeof updater === 'function' ? (updater as any)(prev) : updater;
-          usersRef.current = next;
-          return next;
-        });
-      };
-      const setPoolWrapped: typeof setPool = (updater) => {
-        setPool((prev) => {
-          const next = typeof updater === 'function' ? (updater as any)(prev) : updater;
-          poolRef.current = next;
-          return next;
-        });
-      };
-      return {
-        get users() { return usersRef.current; },
-        get pool() { return poolRef.current; },
-        rpcUrl,
-        deployedContracts,
-        log: (type, actor, msg, value, success = true, realTx = false) =>
-          addEvent({ type, actor, message: msg, value, success, realTx }),
-        stop: () => stopRef.current,
-        setPool: setPoolWrapped,
-        setUsers: setUsersWrapped,
-        onTxRecorded,
-        sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
-        callContract: (name, fn, args, pk, rawAmounts?) => {
-          // Always put the selected contract first so scoring picks it
-          const effectiveContracts = selectedSimContract
-            ? [selectedSimContract, ...deployedContracts.filter(d => d.id !== selectedSimContract.id)]
-            : deployedContracts;
-          return callDeployedContract(effectiveContracts, rpcUrl, name, fn, args, pk, rawAmounts);
-        },
-        getContractDecimals: async (contractName: string) => {
-          const dc = deployedContracts.find((c) =>
-            c.name === contractName ||
-            c.name.toLowerCase().includes(contractName.toLowerCase()) ||
-            c.abi.some((i: any) => i.type === 'function' && i.name === 'decimals'),
-          );
-          if (!dc) return 18;
-          return getTokenDecimals(rpcUrl, dc.address, dc.abi);
-        },
-        checkSupport: (required) => checkContractSupport(deployedContracts, required),
-      };
+            // Fetch ERC20 balance if contract available
+            if (tokenContract) {
+              try {
+                const contract = new ethers.Contract(
+                  tokenContract.address,
+                  tokenContract.abi,
+                  provider,
+                );
+                const raw = await contract.balanceOf(u.address);
+                const decimals = await getTokenDecimals(
+                  rpcUrl,
+                  tokenContract.address,
+                  tokenContract.abi,
+                );
+                const formatted = parseFloat(ethers.formatUnits(raw, decimals));
+                setUsers((prev) =>
+                  prev.map((x, j) => (j === idx ? { ...x, balanceToken: formatted } : x)),
+                );
+              } catch {}
+            }
+          }),
+        );
+      } catch {}
     },
-    [rpcUrl, deployedContracts, addEvent, onTxRecorded],
+    [rpcUrl, deployedContracts],
   );
 
+  // Build simulation context — uses refs so ctx.users is always current
+  const buildContext = useCallback((): SimContext => {
+    // Wrap setUsers to keep ref in sync
+    const setUsersWrapped: typeof setUsers = (updater) => {
+      setUsers((prev) => {
+        const next = typeof updater === 'function' ? (updater as any)(prev) : updater;
+        usersRef.current = next;
+        return next;
+      });
+    };
+    const setPoolWrapped: typeof setPool = (updater) => {
+      setPool((prev) => {
+        const next = typeof updater === 'function' ? (updater as any)(prev) : updater;
+        poolRef.current = next;
+        return next;
+      });
+    };
+    return {
+      get users() {
+        return usersRef.current;
+      },
+      get pool() {
+        return poolRef.current;
+      },
+      rpcUrl,
+      deployedContracts,
+      log: (type, actor, msg, value, success = true, realTx = false) =>
+        addEvent({ type, actor, message: msg, value, success, realTx }),
+      stop: () => stopRef.current,
+      setPool: setPoolWrapped,
+      setUsers: setUsersWrapped,
+      onTxRecorded,
+      sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+      callContract: (name, fn, args, pk, rawAmounts?) => {
+        // If user explicitly selected a contract, pass its address as forced override
+        // so we bypass all scoring — this lets MockIDRX, MockUSDC, etc. work correctly.
+        const forced = selectedSimContract ? selectedSimContract.address : undefined;
+        return callDeployedContract(
+          enrichedContracts,
+          rpcUrl,
+          name,
+          fn,
+          args,
+          pk,
+          rawAmounts,
+          forced,
+        );
+      },
+      getContractDecimals: async (_contractName: string) => {
+        // Prefer the user-selected contract, fall back to any contract with decimals()
+        const dc =
+          selectedSimContract ??
+          enrichedContracts.find((c) =>
+            c.abi.some((i: any) => i.type === 'function' && i.name === 'decimals'),
+          );
+        if (!dc) return 18;
+        return getTokenDecimals(rpcUrl, dc.address, dc.abi);
+      },
+      checkSupport: (required) => checkContractSupport(deployedContracts, required),
+    };
+  }, [rpcUrl, deployedContracts, addEvent, onTxRecorded]);
+
   const runSim = async () => {
-    if (!activeModule || running) return;
+    if (!activeModule || running || !canRun) return;
     stopRef.current = false;
     setRunning(true);
     setEvents([]);
     setPool(defaultPool());
-    const freshUsers = [makeUser(0, 'Alice'), makeUser(1, 'Bob'), makeUser(2, 'Charlie'), makeUser(3, 'Dave')];
+    const freshUsers = [
+      makeUser(0, 'Alice'),
+      makeUser(1, 'Bob'),
+      makeUser(2, 'Charlie'),
+      makeUser(3, 'Dave'),
+    ];
     setUsers(freshUsers);
     usersRef.current = freshUsers;
     poolRef.current = defaultPool();
@@ -695,78 +849,139 @@ export default function SimulationPanel({ abis, deployedContracts, rpcUrl, onTxR
 
             <ScrollArea className="flex-1 overflow-y-auto">
               <div className="p-3 space-y-2.5">
-                {/* ── Universal contract selector ── */}
-                {(() => {
-                  if (compatibleForActive.length < 2) return null;
-                  const curSel = contractSelections[activeModuleId] ?? '';
-                  return (
-                    <div className="rounded-lg border border-violet-500/25 bg-violet-500/5 overflow-hidden">
-                      {/* header */}
-                      <div className="flex items-center justify-between px-2.5 py-1.5 bg-violet-500/10 border-b border-violet-500/15">
-                        <span className="text-[9px] font-semibold text-violet-300 uppercase tracking-widest flex items-center gap-1">
-                          🎯 Select Contract
-                        </span>
-                        <span className="text-[8px] text-violet-400/50">{compatibleForActive.length} compatible</span>
-                      </div>
-                      {/* contract list */}
-                      <div className="p-1.5 space-y-1">
-                        {compatibleForActive.map(c => {
-                          const isActive = curSel === c.id || (!curSel && compatibleForActive[0].id === c.id);
-                          // Which required methods does this contract implement?
-                          const abiFns = c.abi.filter((i: any) => i.type === 'function').map((i: any) => i.name as string);
-                          const matched = activeModule.requiredMethods.filter(m => abiFns.includes(m));
-                          const missing = activeModule.requiredMethods.filter(m => !abiFns.includes(m));
-                          return (
-                            <button
-                              key={c.id}
-                              disabled={running}
-                              onClick={() => setModuleContract(activeModuleId, isActive && curSel ? '' : c.id)}
-                              className={cn(
-                                'w-full text-left px-2.5 py-2 rounded border text-[10px] transition-all',
-                                isActive
-                                  ? 'border-violet-500/50 bg-violet-500/20 text-violet-100'
-                                  : 'border-border/50 hover:border-violet-500/30 hover:bg-violet-500/5 text-foreground/70 disabled:opacity-40'
-                              )}>
-                              <div className="flex items-center gap-2">
-                                {/* radio dot */}
-                                <div className={cn('w-3 h-3 rounded-full border-2 flex-shrink-0 flex items-center justify-center',
-                                  isActive ? 'border-violet-400 bg-violet-400' : 'border-muted-foreground/30')}>
-                                  {isActive && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                {/* ── Universal contract selector — shown whenever contracts are deployed ── */}
+                {enrichedContracts.length > 0 &&
+                  (() => {
+                    const curSel = contractSelections[activeModuleId] ?? '';
+                    const fullCount = enrichedContracts.filter(
+                      (dc) => getContractCompatibility(dc, activeModuleId) === 'full',
+                    ).length;
+                    return (
+                      <div className="overflow-hidden border rounded-lg border-violet-500/25 bg-violet-500/5">
+                        {/* header */}
+                        <div className="flex items-center justify-between px-2.5 py-1.5 bg-violet-500/10 border-b border-violet-500/15">
+                          <span className="text-[9px] font-semibold text-violet-300 uppercase tracking-widest flex items-center gap-1">
+                            🎯 Select Contract
+                          </span>
+                          <span className="text-[8px] text-violet-400/50">
+                            {fullCount} compatible
+                          </span>
+                        </div>
+                        {/* contract list — ALL deployed contracts shown with compatibility badge */}
+                        <div className="p-1.5 space-y-1">
+                          {enrichedContracts.map((c) => {
+                            const compat = getContractCompatibility(c, activeModuleId);
+                            const isActive =
+                              curSel === c.id || (!curSel && selectedSimContract?.id === c.id);
+                            const abiFns = c.abi
+                              .filter((i: any) => i.type === 'function')
+                              .map((i: any) => i.name as string);
+                            const matched = activeModule.requiredMethods.filter((m) =>
+                              abiFns.includes(m),
+                            );
+                            const missing = activeModule.requiredMethods.filter(
+                              (m) => !abiFns.includes(m),
+                            );
+                            const compatBadge =
+                              compat === 'full' ? (
+                                <span className="text-[7px] px-1 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex-shrink-0">
+                                  ✓ compatible
+                                </span>
+                              ) : compat === 'partial' ? (
+                                <span className="text-[7px] px-1 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 flex-shrink-0">
+                                  ⚠ partial
+                                </span>
+                              ) : activeModule.requiredMethods.length > 0 ? (
+                                <span className="text-[7px] px-1 py-0.5 rounded-full bg-rose-500/10 text-rose-400/70 border border-rose-500/20 flex-shrink-0">
+                                  ✗ none
+                                </span>
+                              ) : null;
+                            return (
+                              <button
+                                key={c.id}
+                                disabled={running}
+                                onClick={() =>
+                                  setModuleContract(activeModuleId, isActive && curSel ? '' : c.id)
+                                }
+                                className={cn(
+                                  'w-full text-left px-2.5 py-2 rounded border text-[10px] transition-all',
+                                  isActive
+                                    ? 'border-violet-500/50 bg-violet-500/20 text-violet-100'
+                                    : 'border-border/50 hover:border-violet-500/30 hover:bg-violet-500/5 text-foreground/70',
+                                  running && 'opacity-40 cursor-not-allowed',
+                                )}>
+                                <div className="flex items-center gap-2">
+                                  {/* radio dot */}
+                                  <div
+                                    className={cn(
+                                      'w-3 h-3 rounded-full border-2 flex-shrink-0 flex items-center justify-center',
+                                      isActive
+                                        ? 'border-violet-400 bg-violet-400'
+                                        : 'border-muted-foreground/30',
+                                    )}>
+                                    {isActive && (
+                                      <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                                    )}
+                                  </div>
+                                  <span className="flex-1 font-semibold truncate">{c.name}</span>
+                                  {compatBadge}
+                                  <span className="font-mono text-muted-foreground/30 text-[8px] flex-shrink-0">
+                                    {c.address.slice(0, 7)}…
+                                  </span>
                                 </div>
-                                <span className="font-semibold flex-1 truncate">{c.name}</span>
-                                {c.version && c.version > 1 && (
-                                  <span className="text-[8px] bg-violet-500/20 text-violet-400 px-1 py-0.5 rounded-full flex-shrink-0">v{c.version}</span>
-                                )}
-                                <span className="font-mono text-muted-foreground/30 text-[8px] flex-shrink-0">{c.address.slice(0,7)}…</span>
-                              </div>
-                              {/* method match indicators */}
-                              {activeModule.requiredMethods.length > 0 && (
-                                <div className="flex flex-wrap gap-0.5 mt-1.5 pl-5">
-                                  {matched.slice(0, 6).map(m => (
-                                    <span key={m} className="text-[7px] px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-400/80 font-mono">{m}()</span>
-                                  ))}
-                                  {missing.slice(0, 4).map(m => (
-                                    <span key={m} className="text-[7px] px-1 py-0.5 rounded bg-rose-500/10 text-rose-400/60 font-mono line-through">{m}()</span>
-                                  ))}
-                                </div>
-                              )}
-                            </button>
-                          );
-                        })}
+                                {/* method match indicators — only if module has requirements */}
+                                {activeModule.requiredMethods.length > 0 &&
+                                  (matched.length > 0 || missing.length > 0) && (
+                                    <div className="flex flex-wrap gap-0.5 mt-1.5 pl-5">
+                                      {matched.slice(0, 6).map((m) => (
+                                        <span
+                                          key={m}
+                                          className="text-[7px] px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-400/80 font-mono">
+                                          {m}()
+                                        </span>
+                                      ))}
+                                      {missing.slice(0, 4).map((m) => (
+                                        <span
+                                          key={m}
+                                          className="text-[7px] px-1 py-0.5 rounded bg-rose-500/10 text-rose-400/60 font-mono line-through">
+                                          {m}()
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                {/* Warning when user picks an incompatible contract */}
+                                {isActive &&
+                                  compat === 'none' &&
+                                  activeModule.requiredMethods.length > 0 && (
+                                    <div className="mt-1.5 pl-5 text-[8px] text-amber-400/70 flex items-center gap-1">
+                                      ⚠ This contract has none of the required methods — simulation
+                                      will run in mock mode
+                                    </div>
+                                  )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {/* footer status */}
+                        <div className="px-2.5 py-1.5 border-t border-violet-500/10 text-[8px] text-violet-400/50 flex items-center gap-1">
+                          {selectedSimContract ? (
+                            <>
+                              ✓{' '}
+                              <span className="font-semibold text-violet-300">
+                                {selectedSimContract.name}
+                              </span>{' '}
+                              will be used for this simulation
+                            </>
+                          ) : (
+                            <>Auto-selecting first compatible contract</>
+                          )}
+                        </div>
                       </div>
-                      {/* footer status */}
-                      <div className="px-2.5 py-1.5 border-t border-violet-500/10 text-[8px] text-violet-400/50 flex items-center gap-1">
-                        {selectedSimContract
-                          ? <>✓ <span className="text-violet-300 font-semibold">{selectedSimContract.name}</span> will be used for this simulation</>
-                          : <>Auto-selecting first compatible contract</>
-                        }
-                      </div>
-                    </div>
-                  );
-                })()}
+                    );
+                  })()}
 
                 {/* Contract status */}
-                <ContractNotice module={activeModule} deployedContracts={deployedContracts} />
+                <ContractNotice module={activeModule} deployedContracts={enrichedContracts} />
 
                 {/* Required methods hint */}
                 {activeModule.requiredMethods.length > 0 && (
@@ -857,18 +1072,46 @@ export default function SimulationPanel({ abis, deployedContracts, rpcUrl, onTxR
                   <Square className="w-3 h-3" /> Stop
                 </Button>
               ) : (
-                <Button
-                  size="sm"
-                  className="w-full gap-1.5 h-8 text-xs bg-violet-600 hover:bg-violet-500"
-                  onClick={runSim}>
-                  <Play className="w-3 h-3" />
-                  Run {activeModule.label}
-                  {selectedSimContract && compatibleForActive.length > 1 && (
-                    <span className="ml-1 opacity-70 text-[9px] truncate max-w-[60px]">
-                      · {selectedSimContract.name}
-                    </span>
+                <div className="space-y-1">
+                  <Button
+                    size="sm"
+                    disabled={!canRun}
+                    className={cn(
+                      'w-full gap-1.5 h-8 text-xs transition-all',
+                      canRun
+                        ? 'bg-violet-600 hover:bg-violet-500'
+                        : 'bg-muted cursor-not-allowed opacity-60 border border-rose-500/30',
+                    )}
+                    onClick={runSim}>
+                    <Play className="w-3 h-3" />
+                    Run {activeModule.label}
+                    {selectedSimContract && compatibleForActive.length > 1 && canRun && (
+                      <span className="ml-1 opacity-70 text-[9px] truncate max-w-[60px]">
+                        · {selectedSimContract.name}
+                      </span>
+                    )}
+                  </Button>
+                  {/* Missing methods warning under Run button */}
+                  {!canRun && missingOnSelected.length > 0 && (
+                    <div className="rounded border border-rose-500/30 bg-rose-500/5 px-2 py-1.5 space-y-1">
+                      <p className="text-[9px] text-rose-400 font-semibold flex items-center gap-1">
+                        <span>⛔</span> Cannot run — missing methods:
+                      </p>
+                      <div className="flex flex-wrap gap-0.5">
+                        {missingOnSelected.map((m) => (
+                          <span
+                            key={m}
+                            className="text-[8px] font-mono px-1 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/25 line-through">
+                            {m}()
+                          </span>
+                        ))}
+                      </div>
+                      <p className="text-[8px] text-rose-400/60">
+                        Select a compatible contract or deploy one with these methods.
+                      </p>
+                    </div>
                   )}
-                </Button>
+                </div>
               )}
               <Button
                 variant="outline"
@@ -1051,14 +1294,16 @@ export default function SimulationPanel({ abis, deployedContracts, rpcUrl, onTxR
                   User State
                 </span>
                 {deployedContracts.length > 0 && (
-                  <span className="text-[8px] px-1 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">live</span>
+                  <span className="text-[8px] px-1 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    live
+                  </span>
                 )}
               </div>
               <button
                 onClick={() => syncOnChainBalances(users)}
                 disabled={running || deployedContracts.length === 0}
                 title="Sync balances from chain"
-                className="text-muted-foreground/30 hover:text-emerald-400 transition-colors disabled:opacity-20">
+                className="transition-colors text-muted-foreground/30 hover:text-emerald-400 disabled:opacity-20">
                 <RefreshCw className="w-3 h-3" />
               </button>
             </div>
@@ -1097,7 +1342,11 @@ export default function SimulationPanel({ abis, deployedContracts, rpcUrl, onTxR
                       {/* ETH balance — always shown */}
                       <div className="flex items-center justify-between">
                         <span className="text-amber-400/70">Ξ ETH</span>
-                        <span className={cn('font-mono', u.balanceETH !== 10000 ? 'text-amber-300' : 'text-muted-foreground/40')}>
+                        <span
+                          className={cn(
+                            'font-mono',
+                            u.balanceETH !== 10000 ? 'text-amber-300' : 'text-muted-foreground/40',
+                          )}>
                           {u.balanceETH.toLocaleString(undefined, { maximumFractionDigits: 4 })}
                         </span>
                       </div>
@@ -1124,9 +1373,7 @@ export default function SimulationPanel({ abis, deployedContracts, rpcUrl, onTxR
                       {u.balanceCollateral > 0 && (
                         <div className="flex items-center justify-between">
                           <span>💎 Collateral</span>
-                          <span className="text-sky-300">
-                            {u.balanceCollateral.toFixed(2)}
-                          </span>
+                          <span className="text-sky-300">{u.balanceCollateral.toFixed(2)}</span>
                         </div>
                       )}
                       {u.borrowedAmount > 0 && (
@@ -1145,7 +1392,9 @@ export default function SimulationPanel({ abis, deployedContracts, rpcUrl, onTxR
                         <div className="flex items-center justify-between">
                           <span>🗳️ Votes</span>
                           <span className="text-indigo-400/80">
-                            {u.votingPower >= 1000 ? `${(u.votingPower / 1000).toFixed(1)}k` : u.votingPower.toFixed(0)}
+                            {u.votingPower >= 1000
+                              ? `${(u.votingPower / 1000).toFixed(1)}k`
+                              : u.votingPower.toFixed(0)}
                           </span>
                         </div>
                       )}
@@ -1167,15 +1416,15 @@ export default function SimulationPanel({ abis, deployedContracts, rpcUrl, onTxR
             {/* Connected contracts */}
             <div className="p-2 border-t border-border">
               <p className="text-[9px] text-muted-foreground/40 uppercase tracking-widest font-mono mb-1.5">
-                Contracts ({deployedContracts.length})
+                Contracts ({enrichedContracts.length})
               </p>
-              {deployedContracts.length === 0 ? (
+              {enrichedContracts.length === 0 ? (
                 <p className="text-[9px] text-muted-foreground/25 text-center py-1">
                   Deploy contracts first
                 </p>
               ) : (
                 <div className="space-y-1">
-                  {deployedContracts.map((dc) => (
+                  {enrichedContracts.map((dc) => (
                     <div key={dc.id} className="flex items-center gap-1.5 text-[9px]">
                       <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
                       <span className="font-semibold truncate text-foreground/70">{dc.name}</span>
