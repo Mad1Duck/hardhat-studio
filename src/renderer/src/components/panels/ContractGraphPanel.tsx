@@ -6,7 +6,6 @@ import { useState, useEffect, useCallback, useRef, memo } from 'react';
 import {
   ReactFlow,
   Background,
-  Controls,
   MiniMap,
   useNodesState,
   useEdgesState,
@@ -31,6 +30,7 @@ import mermaid from 'mermaid';
 import { ContractAbi, SourceFile } from '../../types';
 import { Button } from '../ui/button';
 import { cn } from '../../lib/utils';
+import { FlowControls } from '../ui/FlowControls';
 import {
   Network,
   RefreshCw,
@@ -88,7 +88,7 @@ mermaid.initialize({
   theme: 'dark',
   themeVariables: {
     darkMode: true,
-    background: '#0a0f1a',
+    background: '#161b22',
     primaryColor: '#1e3a5f',
     primaryTextColor: '#93c5fd',
     primaryBorderColor: '#3b82f6',
@@ -110,8 +110,8 @@ const ContractNode = memo(({ data, selected }: NodeProps) => {
   return (
     <div
       style={{
-        background: t.bg,
-        border: `1.5px solid ${selected ? '#fff' : t.border}`,
+        background: `#161b22f0`,
+        border: `1.5px solid ${selected ? t.accent : t.border}`,
         boxShadow: selected
           ? `0 0 0 2px ${t.border}66, 0 8px 32px ${t.border}33`
           : `0 0 16px ${t.border}22`,
@@ -141,7 +141,7 @@ const ContractNode = memo(({ data, selected }: NodeProps) => {
             fontSize: 9,
             fontWeight: 700,
             color: t.accent,
-            background: t.badge,
+            background: `#161b22f0`,
             padding: '1px 6px',
             borderRadius: 3,
             letterSpacing: '0.08em',
@@ -273,7 +273,7 @@ function InheritEdge({
           {selected && (
             <span
               style={{
-                background: '#0a0f1a',
+                background: '#161b22',
                 border: '1px solid #f9741644',
                 borderRadius: 4,
                 padding: '1px 6px',
@@ -625,24 +625,17 @@ export default function ContractGraphPanel({ abis, sourceFiles, projectPath }: P
               minZoom={0.1}
               maxZoom={3}
               proOptions={{ hideAttribution: true }}
-              style={{ background: 'hsl(var(--background))' }}
+              style={{ background: '#0d1117' }}
               onNodeClick={(_, node: any) => setSelectedNode(node.data as ContractNodeData)}
               onPaneClick={() => setSelectedNode(null)}>
-              <Background color="#1e293b" gap={32} size={1} />
-              <Controls
-                showInteractive={false}
-                style={{
-                  background: 'hsl(var(--card))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: 8,
-                }}
-              />
+              <Background color="#21262d" gap={32} size={1} />
+              <FlowControls position="bottom-left" />
               <MiniMap
                 nodeColor={(n) => TYPE[(n.data as ContractNodeData).nodeType]?.border || '#3b82f6'}
                 maskColor="rgba(0,0,0,0.8)"
                 style={{
-                  background: 'hsl(var(--card))',
-                  border: '1px solid hsl(var(--border))',
+                  background: '#161b22',
+                  border: '1px solid #21262d',
                   borderRadius: 8,
                 }}
               />
@@ -681,7 +674,7 @@ export default function ContractGraphPanel({ abis, sourceFiles, projectPath }: P
                     fontSize: 9,
                     fontWeight: 700,
                     color: TYPE[selectedNode.nodeType].accent,
-                    background: TYPE[selectedNode.nodeType].badge,
+                    background: `#161b22f0`,
                     padding: '2px 8px',
                     borderRadius: 4,
                     textTransform: 'uppercase',
@@ -951,7 +944,7 @@ export default function ContractGraphPanel({ abis, sourceFiles, projectPath }: P
                             <span
                               key={j}
                               className="text-[9px] px-1 py-0.5 rounded font-mono"
-                              style={{ background: t.badge, color: t.accent }}>
+                              style={{ background: `#161b22f0`, color: t.accent }}>
                               {fn}
                             </span>
                           ))}

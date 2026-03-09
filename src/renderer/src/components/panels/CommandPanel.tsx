@@ -3,7 +3,7 @@ import { CommandConfig, ProcessState, LogEntry } from '../../types'
 import { cn } from '../../lib/utils'
 import { Button } from '../ui/button'
 import { Input } from '../ui/primitives'
-import { Play, Square, Trash2, PenLine, Lock, ChevronDown, Clock, AlertCircle } from 'lucide-react'
+import { Play, Square, Trash2, PenLine, Lock, ChevronDown, Clock, AlertCircle, Power, Loader2 } from 'lucide-react'
 
 // Strip ANSI escape codes but keep some semantic meaning
 function parseAnsi(text: string): string {
@@ -80,6 +80,10 @@ export default function CommandPanel({
   const errorCount = state.logs.filter(l => l.level === 'error').length
   const runtime = state.startedAt ? Math.floor((Date.now() - state.startedAt) / 1000) : 0
 
+  const isNodeCmd = activeCommandId === 'node'
+  const nodeState = processStates.get('node')
+  const nodeRunning = nodeState?.status === 'running'
+
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Tab bar */}
@@ -106,6 +110,26 @@ export default function CommandPanel({
             </button>
           )
         })}
+
+        {/* Hardhat Node quick-toggle — always visible in tab bar */}
+        <div className="ml-auto flex-shrink-0 flex items-end pb-1 pr-1">
+          <button
+            onClick={() => nodeRunning ? onStop('node') : onRun('node')}
+            title={nodeRunning ? 'Force stop Hardhat node' : 'Start Hardhat node'}
+            className={cn(
+              'flex items-center gap-1.5 px-2.5 h-7 rounded-md text-[11px] font-semibold transition-all border',
+              nodeRunning
+                ? 'bg-rose-500/10 border-rose-500/30 text-rose-400 hover:bg-rose-500/20'
+                : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
+            )}
+          >
+            <Power className={cn('w-3 h-3', nodeRunning && 'animate-pulse')} />
+            <span>{nodeRunning ? 'Stop Node' : 'Start Node'}</span>
+            {nodeRunning && (
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Command config bar */}

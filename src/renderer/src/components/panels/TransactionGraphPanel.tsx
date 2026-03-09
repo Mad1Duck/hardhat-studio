@@ -6,7 +6,6 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   ReactFlow,
   Background,
-  Controls,
   MiniMap,
   useNodesState,
   useEdgesState,
@@ -23,6 +22,7 @@ import '@xyflow/react/dist/style.css';
 import { TxRecord, DeployedContract } from '../../types';
 import { Button } from '../ui/button';
 import { cn } from '../../lib/utils';
+import { FlowControls } from '../ui/FlowControls';
 import {
   GitFork,
   RefreshCw,
@@ -134,8 +134,8 @@ function AddressNode({ data, selected }: NodeProps) {
   return (
     <div
       style={{
-        background: s.bg,
-        border: `2px solid ${selected ? '#fff' : s.border}`,
+        background: `#161b22f0`,
+        border: `2px solid ${selected ? s.border : s.border}`,
         boxShadow: selected ? `0 0 0 3px ${s.border}55, 0 0 24px ${s.glow}` : `0 0 10px ${s.glow}`,
         borderRadius: '50%',
         width: size,
@@ -256,7 +256,7 @@ function TxEdge({
           {selected ? (
             <div
               style={{
-                background: '#0f172a',
+                background: '#161b22',
                 border: '1px solid #f59e0b55',
                 borderRadius: 6,
                 padding: '3px 8px',
@@ -271,7 +271,7 @@ function TxEdge({
           ) : label ? (
             <div
               style={{
-                background: '#0f172acc',
+                background: '#161b22cc',
                 borderRadius: 4,
                 padding: '1px 5px',
                 fontSize: 9,
@@ -666,7 +666,7 @@ export default function TransactionGraphPanel({ txHistory, rpcUrl, deployedContr
               minZoom={0.1}
               maxZoom={3}
               proOptions={{ hideAttribution: true }}
-              style={{ background: 'hsl(var(--background))' }}
+              style={{ background: '#0d1117' }}
               onNodeClick={(_, node: any) => {
                 const nd = node.data as NodeData;
                 setDetailAddr(nd.address);
@@ -682,35 +682,28 @@ export default function TransactionGraphPanel({ txHistory, rpcUrl, deployedContr
                 setDetailTxHash(null);
                 setTxDetail(null);
               }}>
-              <Background color="#1e293b" gap={32} size={1} />
-              <Controls
-                showInteractive={false}
-                style={{
-                  background: 'hsl(var(--card))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: 8,
-                }}
-              />
+              <Background color="#21262d" gap={32} size={1} />
+              <FlowControls position="bottom-left" />
               <MiniMap
                 nodeColor={(n) => TYPE_STYLE[(n.data as NodeData).nodeType]?.border || '#475569'}
                 maskColor="rgba(0,0,0,0.75)"
                 style={{
-                  background: 'hsl(var(--card))',
-                  border: '1px solid hsl(var(--border))',
+                  background: '#161b22',
+                  border: '1px solid #21262d',
                   borderRadius: 8,
                 }}
               />
 
               {/* Legend */}
               <Panel position="bottom-left">
-                <div className="bg-card/90 backdrop-blur border border-border rounded-lg px-3 py-2 space-y-1 text-[10px]">
+                <div className="bg-gray-950 backdrop-blur rounded-lg px-3 py-2 space-y-1 text-[10px]">
                   {Object.entries(TYPE_STYLE).map(([type, s]) => (
                     <div key={type} className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.border }} />
                       <span className="capitalize text-muted-foreground">{type}</span>
                     </div>
                   ))}
-                  <div className="border-t border-border mt-1 pt-1 space-y-0.5">
+                  <div className="border-t border-gray-700 mt-1 pt-1 space-y-0.5">
                     <div className="flex items-center gap-2">
                       <div className="w-5 h-px bg-green-500" />
                       <span className="text-muted-foreground">success</span>
@@ -916,7 +909,7 @@ export default function TransactionGraphPanel({ txHistory, rpcUrl, deployedContr
                         <div
                           className="flex items-center justify-center flex-shrink-0 w-10 h-10 text-xl rounded-full"
                           style={{
-                            background: s.bg,
+                            background: `#161b22f0`,
                             border: `2px solid ${s.border}`,
                             boxShadow: `0 0 10px ${s.glow}`,
                           }}>

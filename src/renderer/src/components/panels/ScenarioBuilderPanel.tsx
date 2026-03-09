@@ -6,7 +6,6 @@ import { useState, useCallback, useEffect, useRef, memo } from 'react';
 import {
   ReactFlow,
   Background,
-  Controls,
   MiniMap,
   Panel,
   Handle,
@@ -31,6 +30,7 @@ import '@xyflow/react/dist/style.css';
 import Editor, { useMonaco } from '@monaco-editor/react';
 import { ContractAbi, DeployedContract, HardhatAccount, TxRecord } from '../../types';
 import { cn } from '../../lib/utils';
+import { FlowControls } from '../ui/FlowControls';
 import {
   ListOrdered,
   Plus,
@@ -764,7 +764,7 @@ const StepNode = memo(({ data, selected }: NodeProps) => {
     <div
       onClick={() => d.onSelect(step.id)}
       style={{
-        background: meta.bg,
+        background: `#161b22f0`,
         border: `1.5px solid ${statusRing}`,
         boxShadow: glowStyle,
         borderRadius: 10,
@@ -803,7 +803,7 @@ const StepNode = memo(({ data, selected }: NodeProps) => {
             fontSize: 8,
             fontWeight: 700,
             color: pgColor!.color,
-            background: pgColor!.bg,
+            background: `#161b22f0`,
             border: `1px solid ${pgColor!.border}66`,
             borderRadius: 4,
             padding: '1px 6px',
@@ -981,12 +981,12 @@ const ForkJoinNode = memo(({ data }: NodeProps) => {
           width: size,
           height: size,
           background: d.anyError
-            ? '#1f0a0a'
+            ? '#161b22'
             : d.allOk
-              ? '#0a1f10'
+              ? '#161b22'
               : d.anyRunning
-                ? '#1a1200'
-                : pgColor.bg,
+                ? '#161b22'
+                : `#161b22f0`,
           border: `2px solid ${borderColor}`,
           borderRadius: 4,
           transform: 'rotate(45deg)',
@@ -1353,16 +1353,9 @@ function CanvasInner({
       deleteKeyCode={['Backspace', 'Delete']}
       connectionLineStyle={{ stroke: '#6366f1', strokeWidth: 2, strokeDasharray: '6,3' }}
       connectionLineType={ConnectionLineType.SmoothStep}
-      style={{ background: '#07090f' }}>
-      <Background color="#1a2235" gap={24} size={1} />
-      <Controls
-        showInteractive={false}
-        style={{
-          background: 'hsl(var(--card))',
-          border: '1px solid hsl(var(--border))',
-          borderRadius: 8,
-        }}
-      />
+      style={{ background: '#0d1117' }}>
+      <Background color="#21262d" gap={24} size={1} />
+      <FlowControls position="bottom-left" />
       <MiniMap
         nodeColor={(n) => {
           const step = (n.data as StepNodeData)?.step;
@@ -1373,8 +1366,8 @@ function CanvasInner({
         }}
         maskColor="rgba(0,0,0,0.85)"
         style={{
-          background: 'hsl(var(--card))',
-          border: '1px solid hsl(var(--border))',
+          background: '#161b22',
+          border: '1px solid #21262d',
           borderRadius: 8,
         }}
       />
@@ -1384,7 +1377,7 @@ function CanvasInner({
         <button
           onClick={handleBeautify}
           title="Auto-layout: rearrange nodes to remove overlaps"
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border bg-card/90 text-[10px] text-muted-foreground/60 hover:text-foreground hover:border-indigo-500/40 hover:bg-indigo-500/5 transition-all shadow-lg backdrop-blur-sm font-mono">
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-indigo-500 bg-indigo-500/20 text-[10px] text-muted-foreground/60 hover:border-indigo-500/50 hover:bg-indigo-500/10 transition-all font-mono text-indigo-500">
           <Sparkles className="w-3 h-3 text-indigo-400" />
           Auto-layout
         </button>
@@ -1394,33 +1387,32 @@ function CanvasInner({
         <div className="relative">
           <Button
             size="sm"
-            className="h-8 gap-1.5 bg-card border border-border text-foreground/70 hover:text-foreground hover:bg-muted shadow-lg"
+            className="h-8 gap-1.5 bg-primary text-black hover:bg-primary/70 shadow-sm transition-colors"
             onClick={() => setShowAddMenu((p) => !p)}>
-            <Plus className="w-3.5 h-3.5 text-emerald-400" />
+            <Plus className="w-3.5 h-3.5" />
             Add Step
             <ChevronDown
               className={cn('w-3 h-3 transition-transform', showAddMenu && 'rotate-180')}
             />
           </Button>
-
           {showAddMenu && (
-            <div className="absolute z-50 overflow-hidden -translate-x-1/2 border shadow-2xl bottom-10 left-1/2 w-80 bg-card border-border rounded-xl">
-              <div className="px-3 py-2 border-b border-border">
+            <div className="absolute z-50 overflow-hidden -translate-x-1/2 bg-gray-900 shadow-2xl bottom-10 left-1/2 w-80 rounded-xl">
+              <div className="px-3 py-2 border-b border-gray-800 ">
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                   Add Step
                 </p>
               </div>
               {ACTION_GROUPS.map((group) => (
                 <div key={group}>
-                  <div className="px-3 py-1.5 text-[9px] text-muted-foreground/40 uppercase tracking-widest font-mono bg-muted/20">
+                  <div className="px-3 py-1.5 text-[9px] text-muted-foreground/40 uppercase tracking-widest font-mono">
                     {GROUP_LABELS[group]}
                   </div>
-                  <div className="grid grid-cols-2 gap-px p-1 bg-border/20">
+                  <div className="grid grid-cols-2 gap-px p-1">
                     {ACTIONS.filter((a) => a.group === group).map((a) => (
                       <button
                         key={a.id}
                         onClick={() => addStep(a.id)}
-                        className="flex items-start gap-2 p-2.5 rounded-lg hover:bg-muted/40 text-left transition-colors group">
+                        className="flex items-start gap-2 p-2.5 rounded-lg hover:bg-gray-600 text-left transition-colors group">
                         <span className="flex-shrink-0 text-base">{a.icon}</span>
                         <div>
                           <div className="text-[11px] font-medium" style={{ color: a.color }}>
@@ -2219,7 +2211,7 @@ export default function ScenarioBuilderPanel({
                     return (
                       <span
                         key={g}
-                        style={{ color: c.color, background: c.bg, borderColor: c.border }}
+                        style={{ color: c.color, background: `#161b22f0`, borderColor: c.border }}
                         className="text-[9px] px-1.5 py-0.5 rounded border font-mono">
                         {g}
                       </span>
@@ -2373,7 +2365,7 @@ export default function ScenarioBuilderPanel({
                                     className="text-[9px] font-mono px-1 py-0.5 rounded"
                                     style={{
                                       color: pgColor!.color,
-                                      background: pgColor!.bg,
+                                      background: `#161b22f0`,
                                       borderColor: pgColor!.border,
                                       border: '1px solid',
                                     }}>
@@ -2435,7 +2427,7 @@ export default function ScenarioBuilderPanel({
               <div className="flex flex-col h-full overflow-hidden">
                 <div
                   className="flex items-center flex-shrink-0 gap-2 px-3 py-2 border-b border-border"
-                  style={{ background: `${selectedMeta.bg}88` }}>
+                  style={{ background: `#161b22f0` }}>
                   <span className="text-base">{selectedMeta.icon}</span>
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-semibold" style={{ color: selectedMeta.color }}>
@@ -2495,7 +2487,7 @@ export default function ScenarioBuilderPanel({
                               }
                               style={{
                                 color: c.color,
-                                background: isActive ? c.bg : 'transparent',
+                                background: isActive ? `#161b22f0` : 'transparent',
                                 borderColor: isActive ? c.border : `${c.border}44`,
                               }}
                               className="text-[10px] px-2 py-1 rounded-md border transition-all font-mono hover:opacity-90">

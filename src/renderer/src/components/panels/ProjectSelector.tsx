@@ -1,5 +1,6 @@
 import { FolderOpen, Cpu, Server, Layers, Rocket, Zap, Bug, BookOpen } from 'lucide-react'
 import { Button } from '../ui/button'
+import { ThemeToggle } from '../ui/ThemeToggle'
 
 interface Props {
   onSelect: () => void
@@ -16,6 +17,10 @@ export default function ProjectSelector({ onSelect, lastProject }: Props) {
           backgroundSize: '48px 48px'
         }}
       />
+      {/* Theme toggle */}
+      <div className="absolute top-4 right-4 z-20">
+        <ThemeToggle size="md" />
+      </div>
       {/* Glow */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] rounded-full bg-orange-500/5 blur-[100px] pointer-events-none" />
 

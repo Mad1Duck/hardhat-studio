@@ -48,7 +48,8 @@ import {
   Zap,
 } from 'lucide-react';
 
-import { useState } from 'react';
+import { useState } from 'react'
+import { ThemeToggle } from '../ui/ThemeToggle';
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   server: Server,
@@ -399,18 +400,21 @@ export default function Sidebar({
             </div>
           </div>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={onChangeProject}
-                className="flex-shrink-0 w-6 h-6">
-                <RotateCcw className="w-3 h-3" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Change project</TooltipContent>
-          </Tooltip>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <ThemeToggle size="sm" />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onChangeProject}
+                  className="flex-shrink-0 w-6 h-6">
+                  <RotateCcw className="w-3 h-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Change project</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
 
         {/* Meta badges */}
