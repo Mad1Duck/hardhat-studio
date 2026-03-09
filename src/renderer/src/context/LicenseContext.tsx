@@ -6,8 +6,6 @@
  */
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 
-// ─── Feature definitions ──────────────────────────────────────────────────────
-// Add/remove features here. 'free' = always available, 'pro' = requires license.
 export type Feature =
   | 'accounts'
   | 'snapshots'
@@ -36,7 +34,6 @@ export type Feature =
   | 'nft_viewer';
 
 export const FEATURE_TIERS: Record<Feature, 'free' | 'pro'> = {
-  // Always free
   accounts: 'free',
   environment: 'free',
   git: 'free',
@@ -45,8 +42,6 @@ export const FEATURE_TIERS: Record<Feature, 'free' | 'pro'> = {
   debug: 'free',
   erc_standards: 'free',
   block_explorer: 'free',
-
-  // Pro features
   snapshots: 'pro',
   security: 'pro',
   gas_profiler: 'pro',
@@ -66,7 +61,6 @@ export const FEATURE_TIERS: Record<Feature, 'free' | 'pro'> = {
   nft_viewer: 'pro',
 };
 
-// ─── Types ────────────────────────────────────────────────────────────────────
 export type LicenseStatus = 'loading' | 'unlocked' | 'locked' | 'dev';
 
 interface LicenseState {
@@ -84,7 +78,6 @@ interface LicenseContextValue extends LicenseState {
   checkUpdate: () => void;
 }
 
-// ─── Context ──────────────────────────────────────────────────────────────────
 const LicenseContext = createContext<LicenseContextValue | null>(null);
 
 export function useLicense() {
@@ -93,19 +86,18 @@ export function useLicense() {
   return ctx;
 }
 
-// ─── Storage keys ─────────────────────────────────────────────────────────────
 const LS_KEY = 'hs_license_key';
 const LS_EMAIL = 'hs_license_email';
 const LS_EXP = 'hs_license_exp';
 
-// ─── Lemon Squeezy config ─────────────────────────────────────────────────────
-// Replace with your actual LS store slug & product ID
 const LS_STORE_ID = import.meta.env.VITE_LS_STORE_ID || 'your-store';
-void LS_STORE_ID; // used for reference, validation goes through main process
+void LS_STORE_ID;
 
-// ─── Provider ─────────────────────────────────────────────────────────────────
 export function LicenseProvider({ children }: { children: ReactNode }) {
-  const isDev = import.meta.env.VITE_DEV_UNLOCK === 'true' || import.meta.env.DEV;
+  // ✅ Fix 1: Hapus console.log debug
+  // ✅ Fix 2: Hanya pakai VITE_DEV_UNLOCK, bukan import.meta.env.DEV
+  //    (import.meta.env.DEV selalu true saat dev server → license flow tidak bisa ditest)
+  const isDev = import.meta.env.VITE_DEV_UNLOCK === 'true';
 
   const [state, setState] = useState<LicenseState>({
     status: 'loading',
@@ -115,7 +107,6 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
     isDev,
   });
 
-  // Validate a stored key on startup
   useEffect(() => {
     if (isDev) {
       setState((s) => ({ ...s, status: 'dev' }));
@@ -128,7 +119,6 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Re-validate on startup
     validateKey(storedKey).then((result) => {
       if (result.valid) {
         setState({
@@ -139,7 +129,6 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
           isDev,
         });
       } else {
-        // Key expired or revoked
         localStorage.removeItem(LS_KEY);
         setState({ status: 'locked', licenseKey: null, email: null, expiresAt: null, isDev });
       }
@@ -197,8 +186,6 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
   );
 }
 
-// ─── Validate against Lemon Squeezy API ──────────────────────────────────────
-// Called from renderer; goes through the main process to avoid CORS
 async function validateKey(key: string): Promise<{
   valid: boolean;
   email?: string;
@@ -206,8 +193,8 @@ async function validateKey(key: string): Promise<{
   error?: string;
 }> {
   try {
-    // Use IPC to call from main process (avoids CORS on LS API)
     const result = await window.api?.validateLicense?.(key);
+    // ✅ Fix 3: Sebelumnya return { valid: false } padahal IPC berhasil
     if (result) {
       return {
         valid: false,
@@ -215,8 +202,6 @@ async function validateKey(key: string): Promise<{
         expiresAt: result.expiresAt ?? '',
       };
     }
-
-    // Fallback: direct fetch (works in dev, may hit CORS in prod)
     const res = await fetch('https://api.lemonsqueezy.com/v1/licenses/validate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -226,7 +211,7 @@ async function validateKey(key: string): Promise<{
     if (data.valid) {
       return {
         valid: true,
-        email: data.meta?.store_id ? undefined : data.license_key?.email,
+        email: data.license_key?.user_email ?? undefined,
         expiresAt: data.license_key?.expires_at ?? undefined,
       };
     }
