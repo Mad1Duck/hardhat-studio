@@ -1,10 +1,76 @@
 import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron';
 import { join } from 'path';
-import { spawn, ChildProcess, execSync } from 'child_process';
-import fs from 'fs';
-import path from 'path';
-
+import { spawn, ChildProcess, execSync } from 'child_process';\nimport fs from 'fs';\nimport path from 'path';\n
 const isDev = process.env.NODE_ENV === 'development' || !!process.env['ELECTRON_RENDERER_URL'];
+
+// ─── Auto updater ─────────────────────────────────────────────────────────────
+// electron-updater reads publish config from package.json build.publish
+let autoUpdater: any = null;
+if (!isDev) {
+  try {
+    const updater = require('electron-updater');
+    autoUpdater = updater.autoUpdater;
+    autoUpdater.autoDownload = false;
+    autoUpdater.autoInstallOnAppQuit = true;
+  } catch {
+    // electron-updater not installed yet
+  }
+}
+
+function setupAutoUpdater(win: BrowserWindow) {
+  if (!autoUpdater) return;
+  const send = (payload: object) => win.webContents.send('update-status', payload);
+
+  autoUpdater.on('checking-for-update',    () => send({ type: 'checking' }));
+  autoUpdater.on('update-not-available',   () => send({ type: 'not-available' }));
+  autoUpdater.on('update-available',       (info: any) => send({ type: 'available', version: info.version, releaseNotes: info.releaseNotes }));
+  autoUpdater.on('download-progress',      (p: any)    => send({ type: 'download-progress', percent: p.percent }));
+  autoUpdater.on('update-downloaded',      (info: any) => send({ type: 'downloaded', version: info.version }));
+  autoUpdater.on('error',                  (e: Error)  => send({ type: 'error', message: e.message }));
+
+  // Check on startup after 3s
+  setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 3000);
+}
+
+ipcMain.handle('check-for-update', async () => {
+  if (!autoUpdater) return false;
+  try { await autoUpdater.checkForUpdates(); return true; } catch { return false; }
+});
+
+ipcMain.handle('download-update', async () => {
+  if (!autoUpdater) return false;
+  try { await autoUpdater.downloadUpdate(); return true; } catch { return false; }
+});
+
+ipcMain.handle('install-update', async () => {
+  if (!autoUpdater) return false;
+  autoUpdater.quitAndInstall();
+  return true;
+});
+
+// ─── License validation (Lemon Squeezy) ──────────────────────────────────────
+ipcMain.handle('validate-license', async (_, key: string) => {
+  try {
+    const res = await fetch('https://api.lemonsqueezy.com/v1/licenses/validate', {
+      method: 'POST',
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ license_key: key }),
+    });
+    const data = await res.json() as any;
+    if (data.valid) {
+      return {
+        valid: true,
+        email: data.license_key?.user_email ?? null,
+        expiresAt: data.license_key?.expires_at ?? null,
+      };
+    }
+    return { valid: false, error: data.error ?? 'Invalid license key' };
+  } catch (e) {
+    return { valid: false, error: String(e) };
+  }
+});
+
+
 
 let mainWindow: BrowserWindow | null = null;
 const processes = new Map<string, ChildProcess>();
@@ -26,7 +92,10 @@ function createWindow(): void {
     }
   });
 
-  mainWindow.on('ready-to-show', () => mainWindow!.show());
+  mainWindow.on('ready-to-show', () => {
+    mainWindow!.show();
+    setupAutoUpdater(mainWindow!);
+  });
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useLicense } from './context/LicenseContext';
 import {
   CommandConfig,
   ContractAbi,
@@ -52,7 +53,16 @@ import EventSchemaAnalyzer from './components/panels/EventSchemaAnalyzer';
 import ABICompatibilityChecker from './components/panels/ABICompatibilityChecker';
 import TransactionGraphPanel from './components/panels/TransactionGraphPanel';
 import ERC20TokenReader from './components/panels/ERC20TokenReader';
+import { LicenseGate } from './components/LicenseUI';
+import { UpdateChecker } from './components/UpdateChecker';
 
+type UpdateStatusEvent = {
+  type: 'checking' | 'available' | 'not-available' | 'download-progress' | 'downloaded' | 'error';
+  version?: string;
+  releaseNotes?: string;
+  percent?: number;
+  message?: string;
+};
 declare global {
   interface Window {
     api: {
@@ -111,7 +121,16 @@ declare global {
         filters?: Array<{ name: string; extensions: string[] }>;
         title?: string;
       }) => Promise<string | null>;
-
+      checkForUpdate: () => Promise<string | null>;
+      validateLicense: (key: string) => Promise<{
+        valid: boolean;
+        email?: string | null;
+        expiresAt?: string | null;
+        error?: string;
+      }>;
+      downloadUpdate: () => Promise<boolean>;
+      installUpdate: () => Promise<boolean>;
+      onUpdateStatus: (cb: (event: UpdateStatusEvent) => void) => () => void;
       showSaveFileDialog: (opts?: {
         defaultPath?: string;
         filters?: Array<{ name: string; extensions: string[] }>;
@@ -608,6 +627,7 @@ ${path}`);
   }, [abis, projectInfo]);
 
   // ── Panel renderer (used for both main + pinned) ──
+  const { can } = useLicense();
   const renderPanel = (tab: NavTab) => {
     switch (tab) {
       case 'commands':
@@ -737,16 +757,26 @@ ${path}`);
           />
         );
       case 'security':
-        return <SecurityPanel projectPath={projectPath!} />;
+        return (
+          <LicenseGate feature="security">
+            <SecurityPanel projectPath={projectPath!} />
+          </LicenseGate>
+        );
       case 'gas':
-        return <GasPanel abis={abis} txHistory={txHistory} rpcUrl={rpcUrl} />;
+        return (
+          <LicenseGate feature="gas_profiler">
+            <GasPanel abis={abis} txHistory={txHistory} rpcUrl={rpcUrl} />
+          </LicenseGate>
+        );
       case 'graph':
         return (
-          <ContractGraphPanel
-            abis={abis}
-            sourceFiles={sourceFiles}
-            projectPath={projectPath ?? ''}
-          />
+          <LicenseGate feature="contract_graph">
+            <ContractGraphPanel
+              abis={abis}
+              sourceFiles={sourceFiles}
+              projectPath={projectPath ?? ''}
+            />
+          </LicenseGate>
         );
       case 'environment':
         return <EnvironmentPanel projectPath={projectPath!} />;
@@ -767,47 +797,77 @@ ${path}`);
           />
         );
       case 'snapshots':
-        return <SnapshotsPanel rpcUrl={rpcUrl} projectPath={projectPath ?? ''} />;
+        return (
+          <LicenseGate feature="snapshots">
+            <SnapshotsPanel rpcUrl={rpcUrl} projectPath={projectPath ?? ''} />
+          </LicenseGate>
+        );
       case 'opcodes':
-        return <OpcodeViewer abis={abis} selectedAbi={selectedAbi} onSelectAbi={setSelectedAbi} />;
+        return (
+          <LicenseGate feature="opcode_viewer">
+            <OpcodeViewer abis={abis} selectedAbi={selectedAbi} onSelectAbi={setSelectedAbi} />
+          </LicenseGate>
+        );
       case 'storage':
         return (
-          <StorageLayoutPanel
-            abis={abis}
-            selectedAbi={selectedAbi}
-            onSelectAbi={setSelectedAbi}
-            projectPath={projectPath ?? ''}
-            rpcUrl={rpcUrl}
-            deployedContracts={deployedContracts}
-          />
+          <LicenseGate feature="opcode_viewer">
+            <StorageLayoutPanel
+              abis={abis}
+              selectedAbi={selectedAbi}
+              onSelectAbi={setSelectedAbi}
+              projectPath={projectPath ?? ''}
+              rpcUrl={rpcUrl}
+              deployedContracts={deployedContracts}
+            />
+          </LicenseGate>
         );
       case 'artifacts':
-        return <ArtifactDiffPanel projectPath={projectPath!} />;
+        return (
+          <LicenseGate feature="opcode_viewer">
+            <ArtifactDiffPanel projectPath={projectPath!} />
+          </LicenseGate>
+        );
       case 'proxy':
         return (
-          <ProxyInspectorPanel
-            rpcUrl={rpcUrl}
-            deployedContracts={deployedContracts}
-            onNavigateToInteract={() => {
-              setActiveTab('interact');
-            }}
-          />
+          <LicenseGate feature="opcode_viewer">
+            <ProxyInspectorPanel
+              rpcUrl={rpcUrl}
+              deployedContracts={deployedContracts}
+              onNavigateToInteract={() => {
+                setActiveTab('interact');
+              }}
+            />
+          </LicenseGate>
         );
       case 'audit':
-        return <AuditNotesPanel abis={abis} projectPath={projectPath ?? ''} />;
+        return (
+          <LicenseGate feature="audit_notes">
+            <AuditNotesPanel abis={abis} projectPath={projectPath ?? ''} />
+          </LicenseGate>
+        );
       case 'scenario':
         return (
-          <ScenarioBuilderPanel
-            abis={abis}
-            deployedContracts={deployedContracts}
-            rpcUrl={rpcUrl}
-            onTxRecorded={(tx) => setTxHistory((prev) => [tx, ...prev.slice(0, 499)])}
-          />
+          <LicenseGate feature="scenario_builder">
+            <ScenarioBuilderPanel
+              abis={abis}
+              deployedContracts={deployedContracts}
+              rpcUrl={rpcUrl}
+              onTxRecorded={(tx) => setTxHistory((prev) => [tx, ...prev.slice(0, 499)])}
+            />
+          </LicenseGate>
         );
       case 'lp':
-        return <LiquidityPoolPanel deployedContracts={deployedContracts} rpcUrl={rpcUrl} />;
+        return (
+          <LicenseGate feature="lp_simulator">
+            <LiquidityPoolPanel deployedContracts={deployedContracts} rpcUrl={rpcUrl} />
+          </LicenseGate>
+        );
       case 'nft':
-        return <NFTViewerPanel rpcUrl={rpcUrl} deployedContracts={deployedContracts} />;
+        return (
+          <LicenseGate feature="nft_viewer">
+            <NFTViewerPanel rpcUrl={rpcUrl} deployedContracts={deployedContracts} />
+          </LicenseGate>
+        );
       case 'erc':
         return (
           <ERCStandardsPanel abis={abis} deployedContracts={deployedContracts} rpcUrl={rpcUrl} />
@@ -816,74 +876,100 @@ ${path}`);
         return <BlockExplorerPanel rpcUrl={rpcUrl} deployedContracts={deployedContracts} />;
       case 'scheduler':
         return (
-          <SchedulerPanel
-            abis={abis}
-            deployedContracts={deployedContracts}
-            rpcUrl={rpcUrl}
-            projectPath={projectPath ?? ''}
-            onRunInTerminal={(cmd) => setTerminalCmdQueue((prev) => [...prev, cmd])}
-          />
+          <LicenseGate feature="simulation_lab">
+            <SchedulerPanel
+              abis={abis}
+              deployedContracts={deployedContracts}
+              rpcUrl={rpcUrl}
+              projectPath={projectPath ?? ''}
+              onRunInTerminal={(cmd) => setTerminalCmdQueue((prev) => [...prev, cmd])}
+            />
+          </LicenseGate>
         );
       case 'upgrade':
         return (
-          <UpgradeWizardPanel
-            abis={abis}
-            deployedContracts={deployedContracts}
-            projectPath={projectPath ?? ''}
-            rpcUrl={rpcUrl}
-            onRunInTerminal={(cmd) => setTerminalCmdQueue((prev) => [...prev, cmd])}
-          />
+          <LicenseGate feature="simulation_lab">
+            <UpgradeWizardPanel
+              abis={abis}
+              deployedContracts={deployedContracts}
+              projectPath={projectPath ?? ''}
+              rpcUrl={rpcUrl}
+              onRunInTerminal={(cmd) => setTerminalCmdQueue((prev) => [...prev, cmd])}
+            />
+          </LicenseGate>
         );
       case 'simulation':
         return (
-          <SimulationPanel
-            abis={abis}
-            deployedContracts={deployedContracts}
-            rpcUrl={rpcUrl}
-            onTxRecorded={(tx) => setTxHistory((prev) => [tx, ...prev.slice(0, 499)])}
-          />
+          <LicenseGate feature="simulation_lab">
+            <SimulationPanel
+              abis={abis}
+              deployedContracts={deployedContracts}
+              rpcUrl={rpcUrl}
+              onTxRecorded={(tx) => setTxHistory((prev) => [tx, ...prev.slice(0, 499)])}
+            />
+          </LicenseGate>
         );
       case 'analytics':
         return (
-          <AnalyticsPanel
-            txHistory={txHistory}
-            deployedContracts={deployedContracts}
-            rpcUrl={rpcUrl}
-          />
+          <LicenseGate feature="analytics">
+            <AnalyticsPanel
+              txHistory={txHistory}
+              deployedContracts={deployedContracts}
+              rpcUrl={rpcUrl}
+            />
+          </LicenseGate>
         );
       case 'frontend':
         return (
-          <FrontendIntegrationPanel
-            abis={abis}
-            deployedContracts={deployedContracts}
-            rpcUrl={rpcUrl}
-          />
+          <LicenseGate feature="frontend_helper">
+            <FrontendIntegrationPanel
+              abis={abis}
+              deployedContracts={deployedContracts}
+              rpcUrl={rpcUrl}
+            />
+          </LicenseGate>
         );
       case 'verify':
         return (
-          <VerificationHelperPanel
-            abis={abis}
-            deployedContracts={deployedContracts}
-            projectPath={projectPath ?? ''}
-            rpcUrl={rpcUrl}
-          />
+          <LicenseGate feature="verify_contract">
+            <VerificationHelperPanel
+              abis={abis}
+              deployedContracts={deployedContracts}
+              projectPath={projectPath ?? ''}
+              rpcUrl={rpcUrl}
+            />
+          </LicenseGate>
         );
       case 'events':
-        return <EventSchemaAnalyzer abis={abis} projectPath={projectPath ?? ''} />;
+        return (
+          <LicenseGate feature="event_schema">
+            <EventSchemaAnalyzer abis={abis} projectPath={projectPath ?? ''} />
+          </LicenseGate>
+        );
       case 'abi-compat':
-        return <ABICompatibilityChecker abis={abis} projectPath={projectPath ?? ''} />;
+        return (
+          <LicenseGate feature="abi_compat">
+            <ABICompatibilityChecker abis={abis} projectPath={projectPath ?? ''} />
+          </LicenseGate>
+        );
       case 'tx-graph':
         return (
-          <TransactionGraphPanel
-            txHistory={txHistory}
-            rpcUrl={rpcUrl}
-            deployedContracts={deployedContracts}
-          />
+          <LicenseGate feature="tx_graph">
+            <TransactionGraphPanel
+              txHistory={txHistory}
+              rpcUrl={rpcUrl}
+              deployedContracts={deployedContracts}
+            />
+          </LicenseGate>
         );
       case 'notes':
         return <NotesEditorPanel projectPath={projectPath} />;
       case 'erc20':
-        return <ERC20TokenReader rpcUrl={rpcUrl} deployedContracts={deployedContracts} />;
+        return (
+          <LicenseGate feature="erc20_reader">
+            <ERC20TokenReader rpcUrl={rpcUrl} deployedContracts={deployedContracts} />
+          </LicenseGate>
+        );
       default:
         return null;
     }
@@ -894,39 +980,44 @@ ${path}`);
   }
 
   return (
-    <div className="flex w-screen h-screen overflow-hidden bg-background">
-      <Sidebar
-        projectInfo={projectInfo}
-        projectPath={projectPath ?? ''}
-        commands={commands}
-        processStates={processStates}
-        activeTab={activeTab}
-        activeCommandId={activeCommandId}
-        abisCount={abis.length}
-        deployedCount={deployedContracts.length}
-        errorCount={allLogs.filter((l) => l.level === 'error').length}
-        onTabChange={setActiveTab}
-        onCommandSelect={(id) => {
-          setActiveCommandId(id);
-          setActiveTab('commands');
-        }}
-        onChangeProject={handleSelectProject}
-        onRunCommand={handleRunCommand}
-        onStopCommand={handleStopCommand}
-        onRefreshAbis={async () => { if (projectPath) setAbis(await window.api.scanAbis(projectPath)); }}
-        onSaveWorkspace={handleSaveWorkspace}
-        onLoadWorkspace={handleLoadWorkspace}
-        onResetState={handleResetState}
-      />
-      <main className="relative flex flex-1 min-w-0 overflow-hidden">
-        <div className="flex-1 min-w-0 overflow-hidden">{renderPanel(activeTab)}</div>
-        <PinnedPanel
-          pinnedTab={pinnedTab}
-          renderPanel={renderPanel}
-          onClose={() => setPinnedTab(null)}
+    <div className="flex flex-col w-screen h-screen overflow-hidden bg-background">
+      <UpdateChecker />
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        <Sidebar
+          projectInfo={projectInfo}
+          projectPath={projectPath ?? ''}
+          commands={commands}
+          processStates={processStates}
+          activeTab={activeTab}
+          activeCommandId={activeCommandId}
+          abisCount={abis.length}
+          deployedCount={deployedContracts.length}
+          errorCount={allLogs.filter((l) => l.level === 'error').length}
+          onTabChange={setActiveTab}
+          onCommandSelect={(id) => {
+            setActiveCommandId(id);
+            setActiveTab('commands');
+          }}
+          onChangeProject={handleSelectProject}
+          onRunCommand={handleRunCommand}
+          onStopCommand={handleStopCommand}
+          onRefreshAbis={async () => {
+            if (projectPath) setAbis(await window.api.scanAbis(projectPath));
+          }}
+          onSaveWorkspace={handleSaveWorkspace}
+          onLoadWorkspace={handleLoadWorkspace}
+          onResetState={handleResetState}
         />
-      </main>
-      <PinFloatingButton pinnedTab={pinnedTab} activeTab={activeTab} onPin={setPinnedTab} />
+        <main className="relative flex flex-1 min-w-0 overflow-hidden">
+          <div className="flex-1 min-w-0 overflow-hidden">{renderPanel(activeTab)}</div>
+          <PinnedPanel
+            pinnedTab={pinnedTab}
+            renderPanel={renderPanel}
+            onClose={() => setPinnedTab(null)}
+          />
+        </main>
+        <PinFloatingButton pinnedTab={pinnedTab} activeTab={activeTab} onPin={setPinnedTab} />
+      </div>
     </div>
   );
 }

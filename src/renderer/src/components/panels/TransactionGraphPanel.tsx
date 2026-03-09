@@ -527,7 +527,7 @@ export default function TransactionGraphPanel({ txHistory, rpcUrl, deployedContr
   return (
     <div className="flex flex-col h-full overflow-hidden bg-background">
       {/* ── Toolbar ── */}
-      <div className="flex flex-wrap items-center flex-shrink-0 gap-2 px-3 py-2 border-b border-border bg-card">
+      <div className="flex flex-wrap items-center flex-shrink-0 gap-2 px-3 py-2 border-b border-border ">
         <GitFork className="flex-shrink-0 w-4 h-4 text-sky-400" />
         <span className="text-sm font-semibold">Transaction Graph</span>
         {latestBlockNum !== null && (
@@ -695,15 +695,15 @@ export default function TransactionGraphPanel({ txHistory, rpcUrl, deployedContr
               />
 
               {/* Legend */}
-              <Panel position="bottom-left">
-                <div className="bg-gray-950 backdrop-blur rounded-lg px-3 py-2 space-y-1 text-[10px]">
+              <Panel position="top-left">
+                <div className="bg-card/90 dark:bg-emerald-500/10 backdrop-blur rounded-lg px-3 py-2 space-y-1 text-[10px]">
                   {Object.entries(TYPE_STYLE).map(([type, s]) => (
                     <div key={type} className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.border }} />
                       <span className="capitalize text-muted-foreground">{type}</span>
                     </div>
                   ))}
-                  <div className="border-t border-gray-700 mt-1 pt-1 space-y-0.5">
+                  <div className="border-t border-border mt-1 pt-1 space-y-0.5">
                     <div className="flex items-center gap-2">
                       <div className="w-5 h-px bg-green-500" />
                       <span className="text-muted-foreground">success</span>

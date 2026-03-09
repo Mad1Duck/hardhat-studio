@@ -52,12 +52,8 @@
 }
 
 @layer base {
-  * {
-    @apply border-border;
-  }
-  html,
-  body,
-  #root {
+  * { @apply border-border; }
+  html, body, #root {
     height: 100%;
     width: 100%;
     overflow: hidden;
@@ -67,160 +63,69 @@
     font-family: 'Geist', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     font-size: 13px;
-    transition:
-      background-color 0.15s ease,
-      color 0.15s ease;
+    transition: background-color 0.15s ease, color 0.15s ease;
   }
 }
 
 /* Scrollbars */
-::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: hsl(var(--border));
-  border-radius: 2px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.4);
-}
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.4); }
 
-code,
-pre,
-.font-mono {
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-}
+code, pre, .font-mono { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
 
 /* ANSI colors */
-.ansi-black {
-  color: #4a5568;
-}
-.ansi-red {
-  color: #fc8181;
-}
-.ansi-green {
-  color: #68d391;
-}
-.ansi-yellow {
-  color: #f6e05e;
-}
-.ansi-blue {
-  color: #63b3ed;
-}
-.ansi-magenta {
-  color: #d6bcfa;
-}
-.ansi-cyan {
-  color: #76e4f7;
-}
-.ansi-white {
-  color: #e2e8f0;
-}
-.ansi-bright-black {
-  color: #718096;
-}
-.ansi-bright-red {
-  color: #feb2b2;
-}
-.ansi-bright-green {
-  color: #9ae6b4;
-}
-.ansi-bright-yellow {
-  color: #faf089;
-}
-.ansi-bright-blue {
-  color: #90cdf4;
-}
-.ansi-bright-white {
-  color: #f7fafc;
-}
+.ansi-black { color: #4a5568; }
+.ansi-red { color: #fc8181; }
+.ansi-green { color: #68d391; }
+.ansi-yellow { color: #f6e05e; }
+.ansi-blue { color: #63b3ed; }
+.ansi-magenta { color: #d6bcfa; }
+.ansi-cyan { color: #76e4f7; }
+.ansi-white { color: #e2e8f0; }
+.ansi-bright-black { color: #718096; }
+.ansi-bright-red { color: #feb2b2; }
+.ansi-bright-green { color: #9ae6b4; }
+.ansi-bright-yellow { color: #faf089; }
+.ansi-bright-blue { color: #90cdf4; }
+.ansi-bright-white { color: #f7fafc; }
 
 /* Light mode ANSI */
-.light .ansi-white {
-  color: #1a202c;
-}
-.light .ansi-bright-white {
-  color: #2d3748;
-}
+.light .ansi-white { color: #1a202c; }
+.light .ansi-bright-white { color: #2d3748; }
 
 /* Glow effects */
-.glow-orange {
-  box-shadow: 0 0 20px rgba(247, 147, 26, 0.25);
-}
-.glow-emerald {
-  box-shadow: 0 0 16px rgba(52, 211, 153, 0.2);
-}
-.glow-rose {
-  box-shadow: 0 0 16px rgba(251, 113, 133, 0.2);
-}
+.glow-orange { box-shadow: 0 0 20px rgba(247, 147, 26, 0.25); }
+.glow-emerald { box-shadow: 0 0 16px rgba(52, 211, 153, 0.2); }
+.glow-rose { box-shadow: 0 0 16px rgba(251, 113, 133, 0.2); }
 
 /* Status indicators */
 .status-running {
-  @apply rounded-full bg-emerald-400;
+  @apply bg-emerald-400 rounded-full;
   animation: pulse-glow 1.5s ease-in-out infinite;
   box-shadow: 0 0 6px rgba(52, 211, 153, 0.8);
 }
-.status-error {
-  @apply rounded-full bg-rose-400;
-}
-.status-idle {
-  @apply rounded-full bg-muted-foreground/40;
-}
+.status-error { @apply bg-rose-400 rounded-full; }
+.status-idle { @apply bg-muted-foreground/40 rounded-full; }
 
 /* Code highlighting */
-.hljs-keyword {
-  color: #c792ea;
-}
-.hljs-string {
-  color: #c3e88d;
-}
-.hljs-number {
-  color: #f78c6c;
-}
-.hljs-comment {
-  color: #546e7a;
-  font-style: italic;
-}
-.hljs-function {
-  color: #82aaff;
-}
-.hljs-title {
-  color: #ffcb6b;
-}
-.hljs-type {
-  color: #89ddff;
-}
-.hljs-operator {
-  color: #89ddff;
-}
-.light .hljs-keyword {
-  color: #7c3aed;
-}
-.light .hljs-string {
-  color: #16a34a;
-}
-.light .hljs-number {
-  color: #ea580c;
-}
-.light .hljs-comment {
-  color: #9ca3af;
-}
-.light .hljs-function {
-  color: #2563eb;
-}
-.light .hljs-title {
-  color: #d97706;
-}
-.light .hljs-type {
-  color: #0891b2;
-}
-.light .hljs-operator {
-  color: #0891b2;
-}
+.hljs-keyword { color: #c792ea; }
+.hljs-string { color: #c3e88d; }
+.hljs-number { color: #f78c6c; }
+.hljs-comment { color: #546e7a; font-style: italic; }
+.hljs-function { color: #82aaff; }
+.hljs-title { color: #ffcb6b; }
+.hljs-type { color: #89ddff; }
+.hljs-operator { color: #89ddff; }
+.light .hljs-keyword { color: #7c3aed; }
+.light .hljs-string { color: #16a34a; }
+.light .hljs-number { color: #ea580c; }
+.light .hljs-comment { color: #9ca3af; }
+.light .hljs-function { color: #2563eb; }
+.light .hljs-title { color: #d97706; }
+.light .hljs-type { color: #0891b2; }
+.light .hljs-operator { color: #0891b2; }
 
 /* Nav active indicator */
 .nav-active-bar {
@@ -243,7 +148,7 @@ pre,
   background: hsl(var(--card));
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
 .rf-controls-custom button {
   width: 26px;
@@ -256,9 +161,7 @@ pre,
   background: transparent;
   color: hsl(var(--muted-foreground));
   cursor: pointer;
-  transition:
-    background 0.15s,
-    color 0.15s;
+  transition: background 0.15s, color 0.15s;
 }
 .rf-controls-custom button:hover {
   background: hsl(var(--accent));
@@ -271,39 +174,18 @@ pre,
 }
 
 @keyframes pulse-glow {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.35;
-  }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
 }
 @keyframes slide-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 @keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
-.animate-slide-in {
-  animation: slide-in 0.18s ease-out;
-}
-.animate-spin-slow {
-  animation: spin 1s linear infinite;
-}
-.animate-pulse-glow {
-  animation: pulse-glow 1.5s ease-in-out infinite;
-}
+.animate-slide-in { animation: slide-in 0.18s ease-out; }
+.animate-spin-slow { animation: spin 1s linear infinite; }
+.animate-pulse-glow { animation: pulse-glow 1.5s ease-in-out infinite; }

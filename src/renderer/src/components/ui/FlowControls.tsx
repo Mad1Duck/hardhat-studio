@@ -19,7 +19,7 @@ export function FlowControls({ className, position = 'bottom-left' }: FlowContro
 
   return (
     <div className={cn('absolute z-10', posClass, className)}>
-      <div className="flex flex-col overflow-hidden bg-gray-900 shadow-2xl rounded-xl">
+      <div className="flex flex-col overflow-hidden bg-white dark:bg-[#151b23] shadow-2xl rounded-xl">
         <button
           onClick={() => zoomIn({ duration: 200 })}
           title="Zoom in"
@@ -34,7 +34,7 @@ export function FlowControls({ className, position = 'bottom-left' }: FlowContro
           <ZoomOut className="w-3.5 h-3.5" />
         </button>
 
-        <div className="h-px bg-gray-700" />
+        <div className="h-px" />
 
         <button
           onClick={() => fitView({ padding: 0.25, duration: 300 })}

@@ -90,7 +90,27 @@ const api = {
     const fn = (_: Electron.IpcRendererEvent, p: string) => cb(p);
     ipcRenderer.on('abis-changed', fn);
     return () => ipcRenderer.removeListener('abis-changed', fn);
-  }
+  },
+
+  // ── License ──────────────────────────────────────────────────────────────
+  validateLicense: (key: string): Promise<{ valid: boolean; email?: string | null; expiresAt?: string | null; error?: string }> =>
+    ipcRenderer.invoke('validate-license', key),
+
+  // ── Auto updater ─────────────────────────────────────────────────────────
+  checkForUpdate:  (): Promise<boolean> => ipcRenderer.invoke('check-for-update'),
+  downloadUpdate:  (): Promise<boolean> => ipcRenderer.invoke('download-update'),
+  installUpdate:   (): Promise<boolean> => ipcRenderer.invoke('install-update'),
+  onUpdateStatus: (cb: (event: {
+    type: 'checking' | 'available' | 'not-available' | 'download-progress' | 'downloaded' | 'error';
+    version?: string;
+    releaseNotes?: string;
+    percent?: number;
+    message?: string;
+  }) => void) => {
+    const fn = (_: Electron.IpcRendererEvent, d: any) => cb(d);
+    ipcRenderer.on('update-status', fn);
+    return () => ipcRenderer.removeListener('update-status', fn);
+  },
 };
 
 if (process.contextIsolated) {

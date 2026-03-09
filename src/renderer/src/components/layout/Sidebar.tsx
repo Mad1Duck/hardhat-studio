@@ -50,6 +50,8 @@ import {
 
 import { useState } from 'react'
 import { ThemeToggle } from '../ui/ThemeToggle';
+import { LicenseBadge, LicenseModal } from '../LicenseUI';
+import { UpdateChecker } from '../UpdateChecker';
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   server: Server,
@@ -365,6 +367,7 @@ export default function Sidebar({
   ).length;
 
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const [showLicenseModal, setShowLicenseModal] = useState(false);
 
   const getBadge = (id: NavTab) => {
     if (id === 'abis') return abisCount;
@@ -561,9 +564,12 @@ export default function Sidebar({
         </div>
         <div className="flex items-center justify-between">
           <span className="text-[10px] font-mono text-muted-foreground/30">Hardhat Studio</span>
-          <span className="text-[10px] font-mono text-muted-foreground/20">v4.1</span>
+          <span className="text-[10px] font-mono text-muted-foreground/20">v6.0</span>
         </div>
+        <LicenseBadge onClick={() => setShowLicenseModal(true)} />
+        <UpdateChecker compact />
       </div>
+      {showLicenseModal && <LicenseModal onClose={() => setShowLicenseModal(false)} />}
     </aside>
   );
 }
