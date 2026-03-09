@@ -507,6 +507,7 @@ export default function ERC20TokenReader({ rpcUrl, deployedContracts, txHistory 
   const [activeAddr, setActiveAddr] = useState<string>('native');
 
   const [copied, setCopied] = useState<string | null>(null);
+  const [selectorSearch, setSelectorSearch] = useState('');
 
   const copy = (key: string, val: string) => {
     navigator.clipboard.writeText(val);
@@ -809,16 +810,93 @@ export default function ERC20TokenReader({ rpcUrl, deployedContracts, txHistory 
               <span className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/50">
                 Select Contracts
               </span>
-              {allContracts.length > 0 && (
-                <span className="text-[9px] text-muted-foreground/30 font-mono">
-                  {erc20Contracts.length} ERC-20
-                </span>
-              )}
+              <div className="flex items-center gap-1.5">
+                {erc20Contracts.length > 0 && (
+                  <span className="text-[9px] text-muted-foreground/30 font-mono">
+                    {erc20Contracts.length} ERC-20
+                  </span>
+                )}
+                {erc20Contracts.length > 1 && (
+                  <button
+                    onClick={() => {
+                      const allSelected = erc20Contracts.every((c) => selectedIds.has(c.id));
+                      if (allSelected) {
+                        setSelectedIds(new Set());
+                      } else {
+                        setSelectedIds(new Set(erc20Contracts.map((c) => c.id)));
+                        erc20Contracts.forEach((c) => {
+                          if (!tokenData[c.address] && !loadingIds.has(c.id)) {
+                            loadToken(c);
+                            fetchTxEvents(c);
+                          }
+                        });
+                      }
+                    }}
+                    className="text-[8px] px-1.5 py-0.5 rounded border border-yellow-500/30 text-yellow-400/70 hover:text-yellow-400 hover:bg-yellow-500/10 transition-colors font-mono">
+                    {erc20Contracts.every((c) => selectedIds.has(c.id)) ? 'None' : 'All'}
+                  </button>
+                )}
+              </div>
             </div>
+            {/* Auto-detect summary bar */}
+            {erc20Contracts.length > 0 && (
+              <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                {erc20Contracts.map((c) => {
+                  const isSelected = selectedIds.has(c.id);
+                  const info = tokenData[c.address];
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => {
+                        setSelectedIds((prev) => {
+                          const n = new Set(prev);
+                          if (n.has(c.id)) n.delete(c.id);
+                          else {
+                            n.add(c.id);
+                            if (!tokenData[c.address] && !loadingIds.has(c.id)) {
+                              loadToken(c);
+                              fetchTxEvents(c);
+                            }
+                          }
+                          return n;
+                        });
+                      }}
+                      title={c.address}
+                      className={cn(
+                        'text-[8px] font-mono px-1.5 py-0.5 rounded-full border transition-all leading-none',
+                        isSelected
+                          ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-300'
+                          : 'bg-muted/30 border-border/40 text-muted-foreground/40 hover:border-yellow-500/30 hover:text-yellow-400/60',
+                      )}>
+                      {info?.symbol || c.name.slice(0, 6)}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <ScrollArea className="flex-1 overflow-y-auto">
             <div className="p-2 space-y-1.5">
+              {/* Search filter */}
+              {allContracts.length > 3 && (
+                <div className="relative mb-1">
+                  <Search className="absolute w-3 h-3 -translate-y-1/2 left-2 top-1/2 text-muted-foreground/30" />
+                  <input
+                    value={selectorSearch}
+                    onChange={(e) => setSelectorSearch(e.target.value)}
+                    placeholder="Filter contracts…"
+                    className="w-full h-7 pl-6 pr-2 text-[10px] font-mono bg-muted/20 border border-border/40 rounded-md outline-none focus:border-yellow-500/40 text-foreground/70 placeholder:text-muted-foreground/25"
+                  />
+                  {selectorSearch && (
+                    <button
+                      onClick={() => setSelectorSearch('')}
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground/30 hover:text-muted-foreground/60">
+                      ✕
+                    </button>
+                  )}
+                </div>
+              )}
               {/* Native ETH */}
               <ContractSelectorItem
                 contract="native"
@@ -836,22 +914,32 @@ export default function ERC20TokenReader({ rpcUrl, deployedContracts, txHistory 
                   <div className="px-1 py-1 text-[8px] uppercase tracking-widest text-muted-foreground/30 font-mono">
                     ERC-20 Compatible ({erc20Contracts.length})
                   </div>
-                  {erc20Contracts.map((c) => (
-                    <ContractSelectorItem
-                      key={c.id}
-                      contract={c}
-                      isSelected={selectedIds.has(c.id)}
-                      compat={compatMap[c.id]}
-                      onToggle={() => {
-                        setSelectedIds((prev) => {
-                          const n = new Set(prev);
-                          if (n.has(c.id)) n.delete(c.id);
-                          else n.add(c.id);
-                          return n;
-                        });
-                      }}
-                    />
-                  ))}
+                  {erc20Contracts
+                    .filter((c) =>
+                      selectorSearch
+                        ? c.name.toLowerCase().includes(selectorSearch.toLowerCase()) ||
+                          c.address.toLowerCase().includes(selectorSearch.toLowerCase()) ||
+                          (tokenData[c.address]?.symbol || '')
+                            .toLowerCase()
+                            .includes(selectorSearch.toLowerCase())
+                        : true,
+                    )
+                    .map((c) => (
+                      <ContractSelectorItem
+                        key={c.id}
+                        contract={c}
+                        isSelected={selectedIds.has(c.id)}
+                        compat={compatMap[c.id]}
+                        onToggle={() => {
+                          setSelectedIds((prev) => {
+                            const n = new Set(prev);
+                            if (n.has(c.id)) n.delete(c.id);
+                            else n.add(c.id);
+                            return n;
+                          });
+                        }}
+                      />
+                    ))}
                 </div>
               )}
 
@@ -861,21 +949,28 @@ export default function ERC20TokenReader({ rpcUrl, deployedContracts, txHistory 
                   <div className="px-1 py-1 text-[8px] uppercase tracking-widest text-muted-foreground/30 font-mono">
                     Partial ({partialContracts.length})
                   </div>
-                  {partialContracts.map((c) => (
-                    <ContractSelectorItem
-                      key={c.id}
-                      contract={c}
-                      isSelected={selectedIds.has(c.id)}
-                      compat="partial"
-                      onToggle={() => {
-                        setSelectedIds((prev) => {
-                          const n = new Set(prev);
-                          n.has(c.id) ? n.delete(c.id) : n.add(c.id);
-                          return n;
-                        });
-                      }}
-                    />
-                  ))}
+                  {partialContracts
+                    .filter((c) =>
+                      selectorSearch
+                        ? c.name.toLowerCase().includes(selectorSearch.toLowerCase()) ||
+                          c.address.toLowerCase().includes(selectorSearch.toLowerCase())
+                        : true,
+                    )
+                    .map((c) => (
+                      <ContractSelectorItem
+                        key={c.id}
+                        contract={c}
+                        isSelected={selectedIds.has(c.id)}
+                        compat="partial"
+                        onToggle={() => {
+                          setSelectedIds((prev) => {
+                            const n = new Set(prev);
+                            n.has(c.id) ? n.delete(c.id) : n.add(c.id);
+                            return n;
+                          });
+                        }}
+                      />
+                    ))}
                 </div>
               )}
 

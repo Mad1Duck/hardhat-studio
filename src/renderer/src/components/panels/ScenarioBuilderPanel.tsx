@@ -125,6 +125,7 @@ interface Scenario {
   steps: Step[];
   customEdges: CustomEdge[];
   createdAt: number;
+  nodePositions?: Record<string, { x: number; y: number }>;
 }
 
 interface RunLog {
@@ -1489,10 +1490,30 @@ export default function ScenarioBuilderPanel({
     activeRef.current = active;
   }, [active]);
 
-  const onNodesChange = useCallback(
-    (changes: NodeChange[]) => setRfNodes((n) => applyNodeChanges(changes, n)),
-    [],
-  );
+  const onNodesChange = useCallback((changes: NodeChange[]) => {
+    setRfNodes((n) => {
+      const updated = applyNodeChanges(changes, n);
+      // Persist positions on drag end
+      const hasDrag = changes.some((c) => c.type === 'position' && !(c as any).dragging);
+      if (hasDrag && activeRef.current) {
+        const posMap: Record<string, { x: number; y: number }> = {};
+        updated.forEach((node) => {
+          posMap[node.id] = { x: node.position.x, y: node.position.y };
+        });
+        const cur = activeRef.current;
+        const withPos = { ...cur, nodePositions: posMap };
+        setActive(withPos);
+        setScenarios((s) => {
+          const next = s.map((x) => (x.id === withPos.id ? withPos : x));
+          try {
+            localStorage.setItem('hhs_scenarios', JSON.stringify(next));
+          } catch {}
+          return next;
+        });
+      }
+      return updated;
+    });
+  }, []);
 
   const onEdgesChange = useCallback((changes: EdgeChange[]) => {
     setRfEdges((e) => applyEdgeChanges(changes, e));
@@ -1541,7 +1562,11 @@ export default function ScenarioBuilderPanel({
   }, [selectedStepId]);
 
   useEffect(() => {
-    const positions = computeLayout(active?.steps ?? [], active?.customEdges ?? []);
+    // Use saved positions if available, otherwise compute layout
+    const savedPos = active?.nodePositions;
+    const positions = savedPos
+      ? new Map(Object.entries(savedPos))
+      : computeLayout(active?.steps ?? [], active?.customEdges ?? []);
     const { nodes, edges } = buildFlow(
       active?.steps ?? [],
       null,
@@ -1552,7 +1577,7 @@ export default function ScenarioBuilderPanel({
     );
     setRfNodes(nodes);
     setRfEdges(edges);
-  }, [active?.steps, active?.customEdges, activeStepIds, selectedStepId]);
+  }, [active?.steps, active?.customEdges, active?.nodePositions, activeStepIds, selectedStepId]);
 
   const persist = (list: Scenario[]) => {
     setScenarios(list);
@@ -1762,85 +1787,278 @@ export default function ScenarioBuilderPanel({
     setRunLogs([]);
   };
 
-  const exportTest = () => {
-    if (!active) return;
-    const batches = buildBatches(active.steps);
-    const lines = [
-      `import { ethers } from 'hardhat'`,
-      `import { expect } from 'chai'`,
-      ``,
-      `describe('${active.name}', function() {`,
-      `  it('runs all steps', async function() {`,
-      `    const [owner, ...rest] = await ethers.getSigners()`,
-      ``,
-    ];
+  // ── Parse .ts or .js file into steps (shared parser) ─────────────────────
+  const parseScriptToSteps = (text: string): Step[] => {
+    const steps: Step[] = [];
+    const lines = text.split('\n');
 
-    for (const batch of batches) {
-      if (batch.length > 1) {
-        lines.push(`    // ── Parallel batch: [${batch.map((s) => s.description).join(', ')}] ──`);
-        lines.push(`    await Promise.all([`);
-        for (const s of batch) {
-          if (s.action === 'call' || s.action === 'send') {
-            const a = s.args
-              ? s.args
-                  .split(',')
-                  .map((x) => `'${x.trim()}'`)
-                  .join(', ')
-              : '';
-            lines.push(
-              `      (async () => { const c = await ethers.getContractAt('${s.contractName}', '${s.contractAddress || '0x...'}'); await c.${s.functionName}(${a}); })(),`,
-            );
-          }
-        }
-        lines.push(`    ])`);
-      } else {
-        const s = batch[0];
-        lines.push(`    // ${s.description}`);
-        if (s.action === 'wait')
-          lines.push(
-            `    await ethers.provider.send('evm_mine', new Array(${s.blocks}).fill(null))`,
-          );
-        if (s.action === 'timeout')
-          lines.push(`    await new Promise(r => setTimeout(r, ${s.timeoutMs}))`);
-        if (s.action === 'snapshot')
-          lines.push(`    const snap = await ethers.provider.send('evm_snapshot', [])`);
-        if (s.action === 'log') lines.push(`    console.log('${s.message}')`);
-        if (s.action === 'call' || s.action === 'send') {
-          const a = s.args
-            ? s.args
-                .split(',')
-                .map((x) => `'${x.trim()}'`)
-                .join(', ')
-            : '';
-          const ov = s.value && s.value !== '0' ? `, {value: ethers.parseEther('${s.value}')}` : '';
-          lines.push(
-            `    const c_${s.id.slice(0, 6)} = await ethers.getContractAt('${s.contractName}', '${s.contractAddress || '0x...'}')`,
-          );
-          lines.push(
-            `    ${s.action === 'call' ? 'const r_' + s.id.slice(0, 6) + ' = ' : ''}await c_${s.id.slice(0, 6)}.${s.functionName}(${a}${ov})`,
-          );
-        }
-        if (s.action === 'assert') {
-          const a = s.assertArgs
-            ? s.assertArgs
-                .split(',')
-                .map((x) => `'${x.trim()}'`)
-                .join(', ')
-            : '';
-          lines.push(
-            `    const ac_${s.id.slice(0, 6)} = await ethers.getContractAt('${s.assertContract}', '${s.assertContract || '0x...'}')`,
-          );
-          lines.push(
-            `    expect(await ac_${s.id.slice(0, 6)}.${s.assertFn}(${a})).to.${s.assertOperator === 'eq' ? 'equal' : s.assertOperator}(${s.assertExpected})`,
-          );
-        }
+    for (let i = 0; i < lines.length; i++) {
+      const raw = lines[i].trim();
+
+      // getContractAt + function call pattern
+      const contractAtMatch = raw.match(/getContractAt\(['"](.+?)['"]\s*,\s*['"](.+?)['"]\)/);
+      if (contractAtMatch) {
+        const contractName = contractAtMatch[1];
+        const contractAddress = contractAtMatch[2];
+        // look ahead for the call line
+        const nextLine = (lines[i + 1] || '').trim();
+        const callMatch = nextLine.match(/await\s+\w+\.(\w+)\(([^)]*)\)/);
+        const fnName = callMatch?.[1] || '';
+        const args = callMatch?.[2]?.replace(/['"]/g, '').trim() || '';
+        const isRead = nextLine.includes('const r_');
+        steps.push({
+          id: crypto.randomUUID(),
+          action: isRead ? 'call' : 'send',
+          description: `${isRead ? 'Call' : 'Send'} ${fnName}`,
+          contractName,
+          contractAddress,
+          functionName: fnName,
+          args,
+          value: '0',
+          fromPrivateKey: '',
+          blocks: '1',
+          timeoutMs: '1000',
+          message: '',
+          assertContract: '',
+          assertFn: '',
+          assertArgs: '',
+          assertExpected: '',
+          assertOperator: 'eq',
+          expectedRevertMsg: '',
+          impersonateAddr: '',
+          balanceAddr: '',
+          balanceEth: '0',
+          script: '',
+        });
+        i++; // skip next line
+        continue;
+      }
+
+      // evm_mine
+      if (raw.includes("'evm_mine'") || raw.includes('"evm_mine"')) {
+        const blocksMatch = raw.match(/new Array\((\d+)\)/);
+        steps.push({
+          id: crypto.randomUUID(),
+          action: 'wait',
+          description: 'Mine Blocks',
+          contractName: '',
+          contractAddress: '',
+          functionName: '',
+          args: '',
+          value: '0',
+          fromPrivateKey: '',
+          blocks: blocksMatch?.[1] || '1',
+          timeoutMs: '1000',
+          message: '',
+          assertContract: '',
+          assertFn: '',
+          assertArgs: '',
+          assertExpected: '',
+          assertOperator: 'eq',
+          expectedRevertMsg: '',
+          impersonateAddr: '',
+          balanceAddr: '',
+          balanceEth: '0',
+          script: '',
+        });
+        continue;
+      }
+
+      // setTimeout
+      if (raw.includes('setTimeout')) {
+        const msMatch = raw.match(/setTimeout\(r,\s*(\d+)\)/);
+        steps.push({
+          id: crypto.randomUUID(),
+          action: 'timeout',
+          description: 'Wait Timeout',
+          contractName: '',
+          contractAddress: '',
+          functionName: '',
+          args: '',
+          value: '0',
+          fromPrivateKey: '',
+          blocks: '1',
+          timeoutMs: msMatch?.[1] || '1000',
+          message: '',
+          assertContract: '',
+          assertFn: '',
+          assertArgs: '',
+          assertExpected: '',
+          assertOperator: 'eq',
+          expectedRevertMsg: '',
+          impersonateAddr: '',
+          balanceAddr: '',
+          balanceEth: '0',
+          script: '',
+        });
+        continue;
+      }
+
+      // console.log
+      if (raw.startsWith('console.log(')) {
+        const msgMatch = raw.match(/console\.log\(['"](.+?)['"]\)/);
+        steps.push({
+          id: crypto.randomUUID(),
+          action: 'log',
+          description: 'Log Message',
+          contractName: '',
+          contractAddress: '',
+          functionName: '',
+          args: '',
+          value: '0',
+          fromPrivateKey: '',
+          blocks: '1',
+          timeoutMs: '1000',
+          message: msgMatch?.[1] || '',
+          assertContract: '',
+          assertFn: '',
+          assertArgs: '',
+          assertExpected: '',
+          assertOperator: 'eq',
+          expectedRevertMsg: '',
+          impersonateAddr: '',
+          balanceAddr: '',
+          balanceEth: '0',
+          script: '',
+        });
+        continue;
+      }
+
+      // evm_snapshot
+      if (raw.includes("'evm_snapshot'") || raw.includes('"evm_snapshot"')) {
+        steps.push({
+          id: crypto.randomUUID(),
+          action: 'snapshot',
+          description: 'Snapshot',
+          contractName: '',
+          contractAddress: '',
+          functionName: '',
+          args: '',
+          value: '0',
+          fromPrivateKey: '',
+          blocks: '1',
+          timeoutMs: '1000',
+          message: '',
+          assertContract: '',
+          assertFn: '',
+          assertArgs: '',
+          assertExpected: '',
+          assertOperator: 'eq',
+          expectedRevertMsg: '',
+          impersonateAddr: '',
+          balanceAddr: '',
+          balanceEth: '0',
+          script: '',
+        });
+        continue;
+      }
+
+      // impersonateAccount
+      if (raw.includes('hardhat_impersonateAccount')) {
+        const addrMatch = raw.match(/\['(.+?)'/);
+        steps.push({
+          id: crypto.randomUUID(),
+          action: 'impersonate',
+          description: 'Impersonate',
+          contractName: '',
+          contractAddress: '',
+          functionName: '',
+          args: '',
+          value: '0',
+          fromPrivateKey: '',
+          blocks: '1',
+          timeoutMs: '1000',
+          message: '',
+          assertContract: '',
+          assertFn: '',
+          assertArgs: '',
+          assertExpected: '',
+          assertOperator: 'eq',
+          expectedRevertMsg: '',
+          impersonateAddr: addrMatch?.[1] || '',
+          balanceAddr: '',
+          balanceEth: '0',
+          script: '',
+        });
+        continue;
       }
     }
-    lines.push(`  })`, `})`);
-    const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/typescript' }));
+    return steps;
+  };
+
+  // ── Import .ts file ────────────────────────────────────────────────────────
+  const importTs = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.ts';
+    input.onchange = async (e: any) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const text = await file.text();
+      const steps = parseScriptToSteps(text);
+      if (steps.length === 0) {
+        alert('No recognizable steps found in .ts file');
+        return;
+      }
+      const scenarioName = file.name.replace(/\.test\.ts$|\.ts$/, '').replace(/-/g, ' ');
+      const newScenario: Scenario = {
+        id: crypto.randomUUID(),
+        name: scenarioName,
+        steps,
+        customEdges: [],
+        createdAt: Date.now(),
+      };
+      const updated = [...scenarios, newScenario];
+      persist(updated);
+      setActive(newScenario);
+    };
+    input.click();
+  };
+
+  // ── Import .js file ────────────────────────────────────────────────────────
+  const importJs = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.js';
+    input.onchange = async (e: any) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const text = await file.text();
+      const steps = parseScriptToSteps(text);
+      if (steps.length === 0) {
+        alert('No recognizable steps found in .js file');
+        return;
+      }
+      const scenarioName = file.name.replace(/\.script\.js$|\.js$/, '').replace(/-/g, ' ');
+      const newScenario: Scenario = {
+        id: crypto.randomUUID(),
+        name: scenarioName,
+        steps,
+        customEdges: [],
+        createdAt: Date.now(),
+      };
+      const updated = [...scenarios, newScenario];
+      persist(updated);
+      setActive(newScenario);
+    };
+    input.click();
+  };
+
+  // ── Export JSON (full scenario including positions & edges) ──────────────
+  const exportJson = () => {
+    if (!active) return;
+    // Capture current node positions from rfNodes
+    const posMap: Record<string, { x: number; y: number }> = {};
+    rfNodes.forEach((node) => {
+      posMap[node.id] = { x: node.position.x, y: node.position.y };
+    });
+    const exportData: Scenario = { ...active, nodePositions: posMap };
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' }),
+    );
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${active.name.replace(/\s+/g, '-')}.test.ts`;
+    a.download = `${active.name.replace(/\s+/g, '-')}.scenario.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -1860,6 +2078,10 @@ export default function ScenarioBuilderPanel({
           ...s,
           id: crypto.randomUUID(),
           createdAt: Date.now(),
+          // Ensure all fields are preserved
+          steps: s.steps || [],
+          customEdges: s.customEdges || [],
+          nodePositions: s.nodePositions || undefined,
         }));
         const updated = [...scenarios, ...imported];
         persist(updated);
@@ -1958,7 +2180,7 @@ export default function ScenarioBuilderPanel({
           ))}
         </div>
 
-        <div className="px-3 py-2 border-t border-border">
+        <div className="px-3 py-2 space-y-1 border-t border-border">
           <button
             onClick={importScenario}
             className="w-full flex items-center gap-1.5 text-[10px] text-muted-foreground/40 hover:text-muted-foreground transition-colors">
@@ -2053,10 +2275,17 @@ export default function ScenarioBuilderPanel({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-7 text-[10px] gap-1"
-                  onClick={exportTest}
+                  className="h-7 text-[10px] gap-1 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                  onClick={exportJson}
                   disabled={!active.steps.length}>
-                  <Download className="w-3 h-3" /> .test.ts
+                  <Download className="w-3 h-3" /> .json
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-[10px] gap-1 border-sky-500/30 text-sky-400 hover:bg-sky-500/10"
+                  onClick={importScenario}>
+                  <Upload className="w-3 h-3" /> Import
                 </Button>
                 <Button
                   size="sm"
