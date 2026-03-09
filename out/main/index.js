@@ -72,6 +72,7 @@ electron.ipcMain.handle("validate-license", async (_, key) => {
 let mainWindow = null;
 const processes = /* @__PURE__ */ new Map();
 const watchers = /* @__PURE__ */ new Map();
+const iconPath = electron.app.isPackaged ? path.join(process.resourcesPath, "build/icon.png") : path.join(__dirname, "../../build/icon.png");
 function createWindow() {
   mainWindow = new electron.BrowserWindow({
     width: 1600,
@@ -81,6 +82,7 @@ function createWindow() {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: "#090c12",
+    icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.js"),
       sandbox: false,
@@ -288,7 +290,7 @@ electron.ipcMain.handle("run-command", async (_, { id, command, cwd }) => {
     }
     processes.delete(id);
   }
-  return new Promise((resolve) => {
+  return new Promise((resolve2) => {
     try {
       const isWin = process.platform === "win32";
       const child = child_process.spawn(isWin ? "cmd" : "/bin/sh", [isWin ? "/c" : "-c", command], {
@@ -305,7 +307,7 @@ electron.ipcMain.handle("run-command", async (_, { id, command, cwd }) => {
       });
       child.on("spawn", () => {
         mainWindow?.webContents.send("process-status", { id, status: "running" });
-        resolve({ success: true });
+        resolve2({ success: true });
       });
       child.on("close", (code) => {
         processes.delete(id);
@@ -314,10 +316,10 @@ electron.ipcMain.handle("run-command", async (_, { id, command, cwd }) => {
       child.on("error", (err) => {
         processes.delete(id);
         mainWindow?.webContents.send("process-status", { id, status: "error", error: err.message });
-        resolve({ success: false, error: err.message });
+        resolve2({ success: false, error: err.message });
       });
     } catch (e) {
-      resolve({ success: false, error: String(e) });
+      resolve2({ success: false, error: String(e) });
     }
   });
 });

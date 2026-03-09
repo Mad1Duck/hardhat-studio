@@ -4,6 +4,7 @@ import { spawn, ChildProcess, execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 const isDev = process.env.NODE_ENV === 'development' || !!process.env['ELECTRON_RENDERER_URL'];
+import { resolve } from 'path';
 
 // ─── Auto updater ─────────────────────────────────────────────────────────────
 // electron-updater reads publish config from package.json build.publish
@@ -78,6 +79,11 @@ let mainWindow: BrowserWindow | null = null;
 const processes = new Map<string, ChildProcess>();
 const watchers = new Map<string, fs.FSWatcher>();
 
+const iconPath = app.isPackaged
+  ? join(process.resourcesPath, 'build/icon.png')
+  : join(__dirname, '../../build/icon.png');
+
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1600,
@@ -87,6 +93,7 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#090c12',
+    icon: iconPath,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
