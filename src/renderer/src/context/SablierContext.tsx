@@ -2,20 +2,26 @@
  * SablierContext — Per-plan stream-based subscription gating
  *
  * SISTEM PLAN (3 tier):
- *
  *   FREE   → tidak perlu stream, fitur dasar
  *   BASIC  → stream ≥ $9.99/bulan  → Tools & Analysis
  *   PRO    → stream ≥ $29.99/bulan → semua fitur
  *
- * Cara kerja:
- *   1. User connect wallet (MetaMask / injected provider)
- *   2. App query Sablier subgraph — cari stream aktif dari user ke RECIPIENT_ADDRESS
- *   3. Cek depositAmount → tentukan plan (Basic atau Pro)
- *   4. Fitur di-gate sesuai plan
+ * ENV VARS (.env):
+ *   VITE_DEV_UNLOCK=true          → unlock semua fitur tanpa stream (dev only)
+ *   VITE_NODE_ENV=development     → aktifkan testnet mode (deposit threshold dikecilkan, default chain = Sepolia)
+ *   VITE_NODE_ENV=production      → mainnet only (default)
+ *   VITE_RECIPIENT_ADDRESS=0x...  → treasury wallet tujuan stream
  *
- * SETUP:
- *   1. Ganti RECIPIENT_ADDRESS dengan treasury wallet kamu
- *   2. Set VITE_DEV_UNLOCK=true di .env untuk dev mode
+ * Di production build (electron-builder / vite build), set:
+ *   VITE_NODE_ENV=production
+ * Di development (npm run dev), set:
+ *   VITE_NODE_ENV=development
+ *
+ * TESTNET MODE (VITE_NODE_ENV=development):
+ *   - Default chain: Sepolia (chainId 11155111)
+ *   - Deposit threshold dikecilkan: basic=$0.01, pro=$0.02 (buat testing)
+ *   - Durasi minimum: 1 hari (bukan 25 hari)
+ *   - Semua chain testnet tersedia di dropdown
  */
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
@@ -25,23 +31,42 @@ import { createContext, useContext, useState, useEffect, useCallback, ReactNode 
 export type Plan = 'free' | 'basic' | 'pro';
 
 /**
- * Minimum deposit (dalam USD cents, 6 desimal USDC) untuk setiap plan.
- * Contoh: basic = $9.99/bulan = 9_990_000 units USDC (6 dec)
+ * IS_TESTNET_MODE — true jika VITE_NODE_ENV=development
  *
- * Formula: jumlah_usd * 10^6 = units USDC
- * Kalau pakai token 18 desimal (DAI), kalikan lagi * 10^12
+ * Digunakan untuk:
+ *   - Mengecilkan deposit threshold (biar bisa test dengan token testnet murah)
+ *   - Memperpendek durasi minimum stream
+ *   - Default chain ke Sepolia di UI
  */
-export const PLAN_MIN_DEPOSIT: Record<Exclude<Plan, 'free'>, bigint> = {
-  basic: BigInt('9990000'), // $9.99 USDC (6 dec)
-  pro: BigInt('29990000'), // $29.99 USDC (6 dec)
-};
+export const IS_TESTNET_MODE = import.meta.env.VITE_NODE_ENV === 'development';
 
 /**
- * Duration minimum dalam detik.
- * Stream harus punya durasi minimal ini untuk valid.
- * Default: 25 hari (sedikit di bawah 1 bulan, toleransi gas timing)
+ * Minimum deposit per plan (USDC, 6 desimal).
+ *
+ * Production: nilai normal ($9.99 / $29.99)
+ * Development/testnet: nilai kecil ($0.01 / $0.02) supaya mudah di-test
+ *
+ * Formula: jumlah_usd * 10^6 = units USDC
  */
-export const PLAN_MIN_DURATION_SEC = 25 * 24 * 3600; // 25 hari
+export const PLAN_MIN_DEPOSIT: Record<Exclude<Plan, 'free'>, bigint> = IS_TESTNET_MODE
+  ? {
+      basic: BigInt('10000'), // $0.01 USDC — testnet
+      pro: BigInt('20000'), // $0.02 USDC — testnet
+    }
+  : {
+      basic: BigInt('9990000'), // $9.99 USDC — production
+      pro: BigInt('29990000'), // $29.99 USDC — production
+    };
+
+/**
+ * Duration minimum stream dalam detik.
+ *
+ * Production: 25 hari (toleransi gas timing, sedikit di bawah 1 bulan)
+ * Development/testnet: 1 hari (biar mudah di-test)
+ */
+export const PLAN_MIN_DURATION_SEC = IS_TESTNET_MODE
+  ? 1 * 24 * 3600 // 1 hari — testnet
+  : 25 * 24 * 3600; // 25 hari — production
 
 // ─── Feature → Plan Mapping ───────────────────────────────────────────────────
 
@@ -130,20 +155,52 @@ export const PLAN_META: Record<
  */
 export const RECIPIENT_ADDRESS = import.meta.env.VITE_RECIPIENT_ADDRESS;
 
-/** Sablier V2 Subgraph per chain — source: https://docs.sablier.com/api/subgraphs/overview */
-const SUBGRAPH_URLS: Record<number, string | null> = {
-  137: 'https://api.thegraph.com/subgraphs/name/sablier-labs/sablier-v2-polygon',
-  42161: 'https://api.thegraph.com/subgraphs/name/sablier-labs/sablier-v2-arbitrum',
-  56: 'https://api.thegraph.com/subgraphs/name/sablier-labs/sablier-v2-bsc',
-  10143: null, // Monad — belum ada subgraph
+/**
+ * Sablier Lockup Subgraph endpoints — updated 2024
+ *
+ * The Graph hosted service (api.thegraph.com/subgraphs/name/...) was SHUT DOWN.
+ * Sablier migrated to:
+ *   - The Graph Studio: per-chain, FREE testing URL (3000 req/day, no key needed)
+ *   - Envio HyperIndex: single multi-chain endpoint, FREE, no API key needed
+ *
+ * Strategy: try Studio per-chain first, fallback to Envio for unsupported chains.
+ * Source: https://docs.sablier.com/api/lockup/indexers
+ */
+
+// The Graph Studio — per-chain, free, no key needed (rate-limited 3000/day)
+const STUDIO_URLS: Record<number, string> = {
+  // ── Mainnets ──────────────────────────────────────────────────────────────
+  1: 'https://api.studio.thegraph.com/query/57079/sablier/version/latest',
+  137: 'https://api.studio.thegraph.com/query/57079/sablier-matic/version/latest',
+  42161: 'https://api.studio.thegraph.com/query/57079/sablier-arbitrum/version/latest',
+  56: 'https://api.studio.thegraph.com/query/57079/sablier-bsc/version/latest',
+  10: 'https://api.studio.thegraph.com/query/57079/sablier-optimism/version/latest',
+  8453: 'https://api.studio.thegraph.com/query/57079/sablier-base/version/latest',
+  // ── Testnets ──────────────────────────────────────────────────────────────
+  11155111: 'https://api.studio.thegraph.com/query/57079/sablier-sepolia/version/latest',
+  84532: 'https://api.studio.thegraph.com/query/57079/sablier-base-sepolia/version/latest',
+  421614: 'https://api.studio.thegraph.com/query/57079/sablier-arbitrum-sepolia/version/latest',
+  11155420: 'https://api.studio.thegraph.com/query/57079/sablier-optimism-sepolia/version/latest',
 };
 
+// Envio Lockup HyperIndex — multi-chain, no key needed, covers Monad + all chains
+// See: https://envio.dev/app/sablier-labs/lockup-envio
+export const ENVIO_URL = 'https://indexer.hyperindex.xyz/c1c8e48/v1/graphql';
+
 export const CHAIN_NAMES: Record<number, string> = {
+  // ── Mainnets ──────────────────────────────────────────────────────────────
+  1: 'Ethereum',
   137: 'Polygon',
   42161: 'Arbitrum',
   56: 'BNB Chain',
+  10: 'Optimism',
+  8453: 'Base',
   10143: 'Monad',
-  1: 'Ethereum',
+  // ── Testnets ──────────────────────────────────────────────────────────────
+  11155111: 'Sepolia',
+  84532: 'Base Sepolia',
+  421614: 'Arbitrum Sepolia',
+  11155420: 'Optimism Sepolia',
 };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -184,7 +241,7 @@ interface SablierState {
 interface SablierContextValue extends SablierState {
   can: (feature: Feature) => boolean;
   planFor: (feature: Feature) => Plan;
-  connect: () => Promise<void>;
+  connect: (manualAddress?: string, manualChainId?: number) => Promise<void>;
   disconnect: () => void;
   refresh: () => Promise<void>;
   checkUpdate: () => void;
@@ -218,41 +275,89 @@ export function SablierProvider({ children }: { children: ReactNode }) {
     error: null,
   });
 
-  const connect = useCallback(async () => {
-    if (isDev) return;
-    const eth = (window as any).ethereum;
-    if (!eth) {
-      setState((s) => ({ ...s, status: 'no_wallet', error: 'No wallet found. Install MetaMask.' }));
-      return;
-    }
-    try {
-      setState((s) => ({ ...s, status: 'loading', error: null }));
-      const accounts: string[] = await eth.request({ method: 'eth_requestAccounts' });
-      const chainHex: string = await eth.request({ method: 'eth_chainId' });
-      const address = accounts[0]?.toLowerCase() ?? null;
-      const chainId = parseInt(chainHex, 16);
-      if (!address) {
-        setState((s) => ({ ...s, status: 'no_wallet' }));
+  /**
+   * connect(address?, chainId?) — dua mode:
+   *
+   * Mode A — tanpa argumen:
+   *   Electron tidak punya window.ethereum (MetaMask hanya inject ke browser).
+   *   Coba window.ethereum dulu (jika ada — dev via Vite browser mode),
+   *   lalu fallback ke status 'no_wallet' supaya UI bisa tampilkan input manual.
+   *
+   * Mode B — dengan argumen (dari manual address input di UI):
+   *   Langsung set address + chainId dan query subgraph.
+   */
+  const connect = useCallback(
+    async (manualAddress?: string, manualChainId?: number) => {
+      if (isDev) return;
+
+      // Mode B — manual address dari input UI
+      if (manualAddress) {
+        const address = manualAddress.trim().toLowerCase();
+        if (!/^0x[0-9a-f]{40}$/.test(address)) {
+          setState((s) => ({
+            ...s,
+            status: 'no_wallet',
+            error: 'Alamat wallet tidak valid (harus 0x + 40 hex).',
+          }));
+          return;
+        }
+        const chainId = manualChainId ?? 137; // default Polygon
+        try {
+          localStorage.setItem('hs_wallet', address);
+        } catch {}
+        setState((s) => ({
+          ...s,
+          status: 'loading',
+          error: null,
+          walletAddress: address,
+          chainId,
+          chainName: CHAIN_NAMES[chainId] ?? `Chain ${chainId}`,
+        }));
+        await _checkStreams(address, chainId, setState);
+        return;
+      }
+
+      // Mode A — coba window.ethereum (hanya ada di browser dev, bukan Electron prod)
+      const eth = (window as any).ethereum;
+      if (!eth) {
+        // Di Electron, window.ethereum tidak ada — tampilkan UI input manual
+        setState((s) => ({
+          ...s,
+          status: 'no_wallet',
+          error: null, // bukan error, UI akan tampilkan input manual
+        }));
         return;
       }
       try {
-        localStorage.setItem('hs_wallet', address);
-      } catch {}
-      setState((s) => ({
-        ...s,
-        walletAddress: address,
-        chainId,
-        chainName: CHAIN_NAMES[chainId] ?? `Chain ${chainId}`,
-      }));
-      await _checkStreams(address, chainId, setState);
-    } catch (e: any) {
-      setState((s) => ({
-        ...s,
-        status: 'no_wallet',
-        error: e?.code === 4001 ? 'Rejected by user.' : 'Failed to connect.',
-      }));
-    }
-  }, [isDev]);
+        setState((s) => ({ ...s, status: 'loading', error: null }));
+        const accounts: string[] = await eth.request({ method: 'eth_requestAccounts' });
+        const chainHex: string = await eth.request({ method: 'eth_chainId' });
+        const address = accounts[0]?.toLowerCase() ?? null;
+        const chainId = parseInt(chainHex, 16);
+        if (!address) {
+          setState((s) => ({ ...s, status: 'no_wallet' }));
+          return;
+        }
+        try {
+          localStorage.setItem('hs_wallet', address);
+        } catch {}
+        setState((s) => ({
+          ...s,
+          walletAddress: address,
+          chainId,
+          chainName: CHAIN_NAMES[chainId] ?? `Chain ${chainId}`,
+        }));
+        await _checkStreams(address, chainId, setState);
+      } catch (e: any) {
+        setState((s) => ({
+          ...s,
+          status: 'no_wallet',
+          error: e?.code === 4001 ? 'Ditolak user.' : 'Gagal connect.',
+        }));
+      }
+    },
+    [isDev],
+  );
 
   const disconnect = useCallback(() => {
     try {
@@ -435,25 +540,63 @@ async function _checkStreams(address: string, chainId: number, setState: SetStat
 
 /**
  * Query semua stream aktif dari user → pilih yang terbaik (depositAmount terbesar)
- * Kemudian tentukan plan berdasarkan depositAmount.
+ * Primary: The Graph Studio (per-chain, confirmed URLs, no key needed)
+ * Fallback: Envio HyperIndex (multi-chain, covers Monad & chains not in Studio)
+ *
+ * NOTE: Envio uses different GraphQL syntax from The Graph:
+ *   - `Stream(where: {chainId: {_eq: "137"}})` instead of `streams(where: {...})`
+ *   - `limit` instead of `first`
+ *   - asset_id, asset: { symbol, decimals } nested differently
+ */
+/**
+ * queryBestStream — cek Lockup DAN Flow streams dari user
+ *
+ * Sablier punya dua protokol berbeda:
+ *   - Lockup (LL/LD/LT/LK): stream dengan endTime tetap, pakai `depositAmount`
+ *   - Flow (FL): stream open-ended tanpa endTime, pakai `ratePerSecond` + `balance`
+ *
+ * User di screenshot pakai FL3 (SablierFlow) — harus support keduanya.
+ *
+ * Plan detection:
+ *   Lockup → normalize depositAmount ke USD 6-dec, bandingkan dengan PLAN_MIN_DEPOSIT
+ *   Flow   → hitung monthly rate dari ratePerSecond, bandingkan dengan PLAN_MIN_DEPOSIT
  */
 async function queryBestStream(sender: string, chainId: number): Promise<StreamInfo | null> {
-  const subgraphUrl = SUBGRAPH_URLS[chainId];
-  if (subgraphUrl === null) {
-    console.warn(`[Sablier] No subgraph for chain ${chainId}.`);
-    return null;
+  const studioUrl = STUDIO_URLS[chainId];
+
+  // Query Lockup dan Flow secara paralel untuk kecepatan
+  const [lockupResult, flowResult] = await Promise.allSettled([
+    studioUrl ? queryLockupStudio(sender, chainId, studioUrl) : Promise.resolve(null),
+    studioUrl ? queryFlowStudio(sender, chainId, studioUrl) : Promise.resolve(null),
+  ]);
+
+  const lockup = lockupResult.status === 'fulfilled' ? lockupResult.value : null;
+  const flow = flowResult.status === 'fulfilled' ? flowResult.value : null;
+
+  // Pilih yang plan-nya lebih tinggi
+  const PLAN_RANK: Record<Plan, number> = { free: 0, basic: 1, pro: 2 };
+  if (lockup && flow) {
+    return PLAN_RANK[lockup.detectedPlan] >= PLAN_RANK[flow.detectedPlan] ? lockup : flow;
   }
-  if (!subgraphUrl) return null;
+  return lockup ?? flow ?? null;
+}
 
+// ─── Lockup Stream Query ───────────────────────────────────────────────────────
+// Entity: streams — punya endTime tetap, depositAmount total, withdrawn, dll.
+
+async function queryLockupStudio(
+  sender: string,
+  chainId: number,
+  url: string,
+): Promise<StreamInfo | null> {
   const nowSec = Math.floor(Date.now() / 1000);
-  const minEnd = nowSec + PLAN_MIN_DURATION_SEC;
+  const recipient = RECIPIENT_ADDRESS.toLowerCase();
 
-  // Ambil top-5 stream aktif, sort by depositAmount desc
   const query = `{
     streams(
       where: {
         sender: "${sender.toLowerCase()}"
-        recipient: "${RECIPIENT_ADDRESS.toLowerCase()}"
+        recipient: "${recipient}"
         canceled: false
         endTime_gt: "${nowSec}"
       }
@@ -471,7 +614,7 @@ async function queryBestStream(sender: string, chainId: number): Promise<StreamI
     }
   }`;
 
-  const res = await fetch(subgraphUrl, {
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query }),
@@ -480,41 +623,137 @@ async function queryBestStream(sender: string, chainId: number): Promise<StreamI
 
   const json = await res.json();
   const raw: any[] = json?.data?.streams ?? [];
-  if (!raw.length) return null;
 
-  // Pilih stream terbaik dan tentukan plannya
   for (const s of raw) {
     const decimals = Number(s.asset?.decimals ?? 6);
-    const deposit = BigInt(s.depositAmount);
+    const deposit = BigInt(s.depositAmount ?? '0');
     const duration = Number(s.endTime) - Number(s.startTime);
 
-    // Normalkan ke 6 desimal USDC untuk perbandingan
-    const depositNorm =
-      decimals >= 6
-        ? deposit / BigInt(10 ** (decimals - 6))
-        : deposit * BigInt(10 ** (6 - decimals));
+    // Normalize ke 6-decimal USDC untuk perbandingan
+    const depositNorm = normalizeToUsdc(deposit, decimals);
 
-    let detectedPlan: Plan = 'free';
-    if (depositNorm >= PLAN_MIN_DEPOSIT.pro && duration >= PLAN_MIN_DURATION_SEC)
-      detectedPlan = 'pro';
-    else if (depositNorm >= PLAN_MIN_DEPOSIT.basic && duration >= PLAN_MIN_DURATION_SEC)
-      detectedPlan = 'basic';
+    const detectedPlan = detectPlan(depositNorm, duration);
+    if (detectedPlan === 'free') continue;
 
-    if (detectedPlan !== 'free') {
-      return {
-        id: s.id,
-        sender: s.sender,
-        tokenSymbol: s.asset?.symbol ?? 'TOKEN',
-        tokenAddress: s.asset?.id ?? '',
-        depositAmount: s.depositAmount,
-        withdrawnAmount: s.withdrawnAmount,
-        startTime: Number(s.startTime),
-        endTime: Number(s.endTime),
-        chainId,
-        chainName: CHAIN_NAMES[chainId] ?? `Chain ${chainId}`,
-        detectedPlan,
-      };
-    }
+    return {
+      id: s.id,
+      sender: s.sender,
+      tokenSymbol: s.asset?.symbol ?? 'TOKEN',
+      tokenAddress: s.asset?.id ?? '',
+      depositAmount: s.depositAmount,
+      withdrawnAmount: s.withdrawnAmount,
+      startTime: Number(s.startTime),
+      endTime: Number(s.endTime),
+      chainId,
+      chainName: CHAIN_NAMES[chainId] ?? `Chain ${chainId}`,
+      detectedPlan,
+    };
   }
   return null;
+}
+
+// ─── Flow Stream Query ─────────────────────────────────────────────────────────
+// Entity: flows — open-ended stream tanpa endTime tetap.
+// Field kunci: ratePerSecond (token/detik yang di-stream), balance (saldo tersisa)
+//
+// Plan detection untuk Flow:
+//   monthly_rate_usdc = ratePerSecond * 30 * 24 * 3600  (normalize ke 6-dec)
+//   Kalau monthly_rate >= PLAN_MIN_DEPOSIT → plan valid
+//   Durasi "effective" = balance / ratePerSecond (berapa detik lagi bisa jalan)
+
+async function queryFlowStudio(
+  sender: string,
+  chainId: number,
+  url: string,
+): Promise<StreamInfo | null> {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const recipient = RECIPIENT_ADDRESS.toLowerCase();
+
+  // Flow entity di subgraph sablier-matic/sablier-arbitrum/dll
+  const query = `{
+    flows(
+      where: {
+        sender: "${sender.toLowerCase()}"
+        recipient: "${recipient}"
+        paused: false
+        voided: false
+      }
+      orderBy: ratePerSecond
+      orderDirection: desc
+      first: 5
+    ) {
+      id
+      sender
+      ratePerSecond
+      balance
+      depositedAmount
+      withdrawnAmount
+      snapshotTime
+      asset { id symbol decimals }
+    }
+  }`;
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query }),
+  });
+  if (!res.ok) return null;
+
+  const json = await res.json();
+  if (json?.errors) return null; // endpoint tidak support flows — skip
+  const raw: any[] = json?.data?.flows ?? [];
+
+  for (const s of raw) {
+    const decimals = Number(s.asset?.decimals ?? 18);
+    const rps = BigInt(s.ratePerSecond ?? '0'); // token/detik dalam raw units
+    const balance = BigInt(s.balance ?? '0'); // saldo tersisa di stream
+
+    // Effective duration — berapa detik lagi stream bisa jalan dengan saldo sekarang
+    const effectiveDuration = rps > 0n ? Number(balance / rps) : 0;
+
+    // Monthly rate dalam raw token units
+    const SECS_PER_MONTH = 30 * 24 * 3600;
+    const monthlyRaw = rps * BigInt(SECS_PER_MONTH);
+
+    // Normalize ke 6-decimal USDC untuk perbandingan dengan PLAN_MIN_DEPOSIT
+    const monthlyNorm = normalizeToUsdc(monthlyRaw, decimals);
+
+    const detectedPlan = detectPlan(monthlyNorm, effectiveDuration);
+    if (detectedPlan === 'free') continue;
+
+    // Untuk display, hitung "virtual" endTime dari balance yang tersisa
+    const virtualEndTime = nowSec + effectiveDuration;
+
+    return {
+      id: s.id,
+      sender: s.sender,
+      tokenSymbol: s.asset?.symbol ?? 'TOKEN',
+      tokenAddress: s.asset?.id ?? '',
+      depositAmount: s.depositedAmount ?? s.balance,
+      withdrawnAmount: s.withdrawnAmount ?? '0',
+      startTime: Number(s.snapshotTime ?? nowSec),
+      endTime: virtualEndTime,
+      chainId,
+      chainName: CHAIN_NAMES[chainId] ?? `Chain ${chainId}`,
+      detectedPlan,
+    };
+  }
+  return null;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Normalize token amount ke 6-decimal USDC units untuk perbandingan plan */
+function normalizeToUsdc(amount: bigint, decimals: number): bigint {
+  if (decimals === 6) return amount;
+  if (decimals > 6) return amount / BigInt(10 ** (decimals - 6));
+  return amount * BigInt(10 ** (6 - decimals));
+}
+
+/** Tentukan plan dari amount (sudah dinormalisasi ke 6-dec) dan durasi (detik) */
+function detectPlan(amountNorm: bigint, durationSec: number): Plan {
+  if (amountNorm >= PLAN_MIN_DEPOSIT.pro && durationSec >= PLAN_MIN_DURATION_SEC) return 'pro';
+  if (amountNorm >= PLAN_MIN_DEPOSIT.basic && durationSec >= PLAN_MIN_DURATION_SEC) return 'basic';
+  return 'free';
 }

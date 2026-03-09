@@ -33,6 +33,7 @@ import {
   RECIPIENT_ADDRESS,
   Plan,
   PLAN_MIN_DEPOSIT,
+  IS_TESTNET_MODE,
 } from '../context/SablierContext';
 import { Button } from './ui/button';
 import { cn } from '../lib/utils';
@@ -149,6 +150,12 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'status' | 'plans'>('status');
 
+  // Manual address input state (for Electron — no window.ethereum)
+  const [manualAddr, setManualAddr] = useState('');
+  // Default chain: Sepolia di testnet mode, Polygon di production
+  const [manualChain, setManualChain] = useState<number>(IS_TESTNET_MODE ? 11155111 : 137);
+  const [addrError, setAddrError] = useState('');
+
   const isConnected = !!walletAddress;
   const hasPaidPlan = status === 'basic' || status === 'pro';
 
@@ -156,6 +163,24 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
     setRefreshing(true);
     await refresh();
     setRefreshing(false);
+  };
+
+  const handleManualConnect = async () => {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(manualAddr.trim())) {
+      setAddrError('Masukkan alamat wallet valid (0x...)');
+      return;
+    }
+    setAddrError('');
+    await connect(manualAddr.trim(), manualChain);
+  };
+
+  const openSablier = () => {
+    // Electron — harus pakai window.api.openExternal, bukan window.open
+    if ((window as any).api?.openExternal) {
+      (window as any).api.openExternal('https://app.sablier.com');
+    } else {
+      window.open('https://app.sablier.com', '_blank');
+    }
   };
 
   const fmt = {
@@ -171,6 +196,22 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
       return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     },
   };
+
+  const CHAIN_OPTIONS = [
+    // Mainnets
+    { id: 1, label: 'Ethereum', testnet: false },
+    { id: 137, label: 'Polygon', testnet: false },
+    { id: 42161, label: 'Arbitrum', testnet: false },
+    { id: 56, label: 'BNB Chain', testnet: false },
+    { id: 10, label: 'Optimism', testnet: false },
+    { id: 8453, label: 'Base', testnet: false },
+    { id: 10143, label: 'Monad', testnet: false },
+    // Testnets
+    { id: 11155111, label: 'Sepolia', testnet: true },
+    { id: 84532, label: 'Base Sepolia', testnet: true },
+    { id: 421614, label: 'Arbitrum Sepolia', testnet: true },
+    { id: 11155420, label: 'Optimism Sepolia', testnet: true },
+  ];
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-md">
@@ -242,6 +283,20 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                     <p className="font-semibold">Dev Mode Active</p>
                     <p className="text-emerald-400/60 mt-0.5">
                       Semua fitur unlocked via VITE_DEV_UNLOCK=true
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Testnet mode banner */}
+              {!isDev && IS_TESTNET_MODE && (
+                <div className="flex items-start gap-3 p-3 text-xs border rounded-xl bg-amber-500/10 border-amber-500/20 text-amber-400">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold">Testnet Mode — VITE_NODE_ENV=development</p>
+                    <p className="text-amber-400/60 mt-0.5">
+                      Threshold dikecilkan ($0.01/$0.02) · Durasi min 1 hari · Default chain:
+                      Sepolia
                     </p>
                   </div>
                 </div>
@@ -320,15 +375,16 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                     </div>
                   )}
 
+                  {/* Step 1 — manual wallet address (Electron: no window.ethereum) */}
                   <StepCard
                     step={1}
                     done={isConnected}
                     dimmed={false}
-                    title={isConnected ? fmt.addr(walletAddress!) : 'Connect Wallet'}
+                    title={isConnected ? fmt.addr(walletAddress!) : 'Masukkan Alamat Wallet'}
                     subtitle={
                       isConnected
                         ? (chainName ?? `Chain ${chainId}`)
-                        : 'MetaMask atau injected provider'
+                        : 'MetaMask tidak bisa inject ke Electron — paste alamat manual'
                     }
                     right={
                       isConnected ? (
@@ -337,16 +393,58 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                           className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors">
                           <LogOut className="w-3 h-3" /> Disconnect
                         </button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          className="h-7 px-3 text-xs gap-1.5 bg-violet-600 hover:bg-violet-500 text-white border-0"
-                          onClick={connect}>
-                          <Wallet className="w-3 h-3" /> Connect
-                        </Button>
-                      )
+                      ) : null
                     }
                   />
+
+                  {/* Manual address input — shown when not connected */}
+                  {!isConnected && (
+                    <div className="px-1 space-y-2">
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="0x... alamat wallet kamu"
+                          value={manualAddr}
+                          onChange={(e) => {
+                            setManualAddr(e.target.value);
+                            setAddrError('');
+                          }}
+                          className="flex-1 h-8 px-3 text-xs border rounded-lg bg-muted/40 border-border/60 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-violet-500/60"
+                        />
+                        <select
+                          value={manualChain}
+                          onChange={(e) => setManualChain(Number(e.target.value))}
+                          className="h-8 px-2 text-xs border rounded-lg bg-muted/40 border-border/60 text-foreground focus:outline-none focus:border-violet-500/60">
+                          <optgroup label="Mainnet">
+                            {CHAIN_OPTIONS.filter((c) => !c.testnet).map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.label}
+                              </option>
+                            ))}
+                          </optgroup>
+                          <optgroup label="Testnet">
+                            {CHAIN_OPTIONS.filter((c) => c.testnet).map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.label} 🧪
+                              </option>
+                            ))}
+                          </optgroup>
+                        </select>
+                      </div>
+                      {addrError && <p className="text-[10px] text-red-400">{addrError}</p>}
+                      <Button
+                        size="sm"
+                        className="w-full h-7 px-3 text-xs gap-1.5 bg-violet-600 hover:bg-violet-500 text-white border-0"
+                        onClick={handleManualConnect}
+                        disabled={status === 'loading'}>
+                        <Wallet className="w-3 h-3" />
+                        {status === 'loading' ? 'Mengecek…' : 'Verifikasi Wallet'}
+                      </Button>
+                      <p className="text-[10px] text-muted-foreground/50 text-center">
+                        Alamat ini hanya dipakai untuk cek stream — tidak ada signing
+                      </p>
+                    </div>
+                  )}
 
                   <StepCard
                     step={2}
@@ -359,7 +457,7 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                         size="sm"
                         disabled={!isConnected}
                         className="h-7 px-3 text-xs gap-1.5 bg-violet-600 hover:bg-violet-500 text-white border-0 disabled:opacity-40"
-                        onClick={() => window.api?.openExternal?.('https://app.sablier.com')}>
+                        onClick={openSablier}>
                         <ExternalLink className="w-3 h-3" /> Sablier
                       </Button>
                     }
@@ -397,13 +495,31 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
 
                   {/* Supported chains */}
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-[10px] text-muted-foreground">Chain:</span>
-                    {[{ n: 'Polygon' }, { n: 'Arbitrum' }, { n: 'BNB Chain' }, { n: 'Monad*' }].map(
-                      (c) => (
+                    <span className="text-[10px] text-muted-foreground">Mainnet:</span>
+                    {[
+                      'Ethereum',
+                      'Polygon',
+                      'Arbitrum',
+                      'BNB Chain',
+                      'Optimism',
+                      'Base',
+                      'Monad',
+                    ].map((n) => (
+                      <span
+                        key={n}
+                        className="text-[10px] px-2 py-0.5 rounded-full bg-muted/50 border border-border/40 text-muted-foreground">
+                        {n}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[10px] text-muted-foreground">Testnet:</span>
+                    {['Sepolia', 'Base Sepolia', 'Arbitrum Sepolia', 'Optimism Sepolia'].map(
+                      (n) => (
                         <span
-                          key={c.n}
-                          className="text-[10px] px-2 py-0.5 rounded-full bg-muted/50 border border-border/40 text-muted-foreground">
-                          {c.n}
+                          key={n}
+                          className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400/70">
+                          🧪 {n}
                         </span>
                       ),
                     )}
@@ -537,7 +653,13 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
 
               <button
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold transition-colors"
-                onClick={() => window.api?.openExternal?.('https://app.sablier.com')}>
+                onClick={() => {
+                  if ((window as any).api?.openExternal) {
+                    (window as any).api.openExternal('https://app.sablier.com');
+                  } else {
+                    window.open('https://app.sablier.com', '_blank');
+                  }
+                }}>
                 <ExternalLink className="w-3.5 h-3.5" /> Buat Stream di app.sablier.com
               </button>
             </div>
