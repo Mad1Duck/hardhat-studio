@@ -864,6 +864,121 @@ export default function NFTViewerPanel({ rpcUrl, deployedContracts }: Props) {
   // ── Auto-detect banners ────────────────────────────────────────────────────
   const [banners, setBanners] = useState<AutoDetectResult[]>([]);
 
+  // ── ERC-1155 balance discovery across all Hardhat accounts ────────────────
+  const HH_ACCOUNTS_NFT = [
+    '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+    '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+    '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC',
+    '0x90F79bf6EB2c4f870365E785982E1f101E93b906',
+    '0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65',
+    '0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc',
+    '0x976EA74026E726554dB657fA54763abd0C3a0aa9',
+    '0x14dC79964da2C08b23698B3D3cc7Ca32193d9955',
+    '0x23618e81E3f5cdF7f54C3d65f7FBc0aBf5B21E8f',
+    '0xa0Ee7A142d267C1f36714E4a8F75612F20a79720',
+    '0xBcd4042DE499D14e55001CcbB24a551F3b954096',
+    '0x71bE63f3384f5fb98995898A86B02Fb2426c5788',
+    '0xFABB0ac9d68B0B445fB7357272Ff202C5651694a',
+    '0x1CBd3b2770909D4e10f157cABC84C7264073C9Ec',
+    '0xdF3e18d64BC6A983f673Ab319CCaE4f1a57C7097',
+    '0xcd3B766CCDd6AE721141F452C550Ca635964ce71',
+    '0x2546BcD3c84621e976D8185a91A922aE77ECEc30',
+    '0xbDA5747bFD65F08deb54cb465eB87D40e51B197E',
+    '0xdD2FD4581271e230360230F9337D5c0430Bf44C0',
+    '0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199',
+  ];
+
+  // ERC-1155 balanceOfBatch selector: 0x4e1273f4
+  function encodeBalanceOfBatch(accounts: string[], tokenIds: string[]): string {
+    // balanceOfBatch(address[],uint256[])
+    const sig = '0x4e1273f4';
+    const n = accounts.length;
+    // offset for accounts array: 0x40 (64 bytes)
+    // offset for ids array: 0x40 + 32 + n*32
+    const accOffset = 64;
+    const idsOffset = accOffset + 32 + n * 32;
+    let data = sig;
+    data += accOffset.toString(16).padStart(64, '0');
+    data += idsOffset.toString(16).padStart(64, '0');
+    data += n.toString(16).padStart(64, '0');
+    accounts.forEach(a => { data += a.replace('0x', '').toLowerCase().padStart(64, '0'); });
+    data += tokenIds.length.toString(16).padStart(64, '0');
+    tokenIds.forEach(id => { data += parseInt(id).toString(16).padStart(64, '0'); });
+    return data;
+  }
+
+  interface NftHolderInfo { address: string; label: string; tokenIds: string[]; balance721: number }
+  const [discoverNftHolders, setDiscoverNftHolders] = useState<NftHolderInfo[]>([])
+  const [discoveringNft, setDiscoveringNft] = useState(false)
+  const [discoverNftAddr, setDiscoverNftAddr] = useState('')
+  const [showNftDiscover, setShowNftDiscover] = useState(false)
+
+  const discoverNFTBalances = async (contractAddr: string, standard: string, existingTokenIds: string[]) => {
+    if (!contractAddr) return;
+    setDiscoveringNft(true);
+    setDiscoverNftHolders([]);
+    const a = contractAddr.toLowerCase();
+    const tokenIds = existingTokenIds.length > 0 ? existingTokenIds.slice(0, 20) : ['0','1','2','3','4','5','6','7','8','9'];
+
+    try {
+      // Get live accounts from node
+      let accounts = HH_ACCOUNTS_NFT;
+      try {
+        const r = await fetch(rpcUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_accounts', params: [] }) });
+        const d = await r.json();
+        if (d.result?.length > 0) accounts = d.result;
+      } catch {}
+
+      const results: NftHolderInfo[] = [];
+
+      if (standard === 'ERC-1155') {
+        // Use balanceOfBatch for efficient multi-query
+        for (let i = 0; i < accounts.length; i++) {
+          const acct = accounts[i];
+          const holding: string[] = [];
+          for (const tid of tokenIds) {
+            try {
+              // balanceOf(address,uint256) = 0x00fdd58e
+              const data = '0x00fdd58e' + acct.replace('0x','').toLowerCase().padStart(64,'0') + parseInt(tid).toString(16).padStart(64,'0');
+              const r = await fetch(rpcUrl, { method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_call',params:[{to:a,data},'latest']}) });
+              const d = await r.json();
+              if (d.result && d.result !== '0x' && d.result !== '0x'+'0'.repeat(64)) {
+                const bal = parseInt(d.result, 16);
+                if (bal > 0) holding.push(tid);
+              }
+            } catch {}
+          }
+          results.push({ address: acct, label: `Account ${i}`, tokenIds: holding, balance721: holding.length });
+        }
+      } else {
+        // ERC-721: ownerOf for each tokenId
+        const ownerMap: Record<string, string> = {};
+        for (const tid of tokenIds) {
+          try {
+            const pad = parseInt(tid).toString(16).padStart(64,'0');
+            const r = await fetch(rpcUrl, { method:'POST', headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_call',params:[{to:a,data:'0x6352211e'+pad},'latest']}) });
+            const d = await r.json();
+            if (d.result && d.result !== '0x') {
+              const owner = '0x' + d.result.slice(-40).toLowerCase();
+              if (owner !== '0x0000000000000000000000000000000000000000') ownerMap[tid] = owner;
+            }
+          } catch {}
+        }
+        for (let i = 0; i < accounts.length; i++) {
+          const acct = accounts[i].toLowerCase();
+          const owned = Object.entries(ownerMap).filter(([,o]) => o === acct).map(([tid]) => tid);
+          results.push({ address: accounts[i], label: `Account ${i}`, tokenIds: owned, balance721: owned.length });
+        }
+      }
+
+      setDiscoverNftHolders(results);
+    } catch {}
+    setDiscoveringNft(false);
+  };
+
   // ── Persist custom gateways ────────────────────────────────────────────────
   const persistCustomGws = (list: { label: string; url: string }[]) => {
     setSavedCustomGws(list);
@@ -1058,6 +1173,28 @@ export default function NFTViewerPanel({ rpcUrl, deployedContracts }: Props) {
             )}>
             <Settings className="w-3.5 h-3.5" />
           </button>
+          {tokens.length > 0 && (
+            <button
+              onClick={() => {
+                setShowNftDiscover(v => !v);
+                if (!showNftDiscover) {
+                  const contract = tokens[0].contractAddress;
+                  const std = tokens.find(t => t.standard)?.standard || 'ERC-721';
+                  const tids = [...new Set(tokens.map(t => t.tokenId))];
+                  setDiscoverNftAddr(contract);
+                  discoverNFTBalances(contract, std, tids);
+                }
+              }}
+              className={cn(
+                'flex items-center gap-1.5 h-7 px-3 text-xs rounded-xl transition-all',
+                showNftDiscover
+                  ? 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
+                  : 'bg-white/5 hover:bg-white/10 text-white/40 hover:text-white/70'
+              )}>
+              <Sparkles className="w-3 h-3" />
+              {discoveringNft ? 'Scanning…' : 'Holders'}
+            </button>
+          )}
           <button
             onClick={() => {
               setShowAdd((v) => !v);
@@ -1181,7 +1318,13 @@ export default function NFTViewerPanel({ rpcUrl, deployedContracts }: Props) {
             </span>
           </div>
           <button
-            onClick={() => importDetected(r)}
+            onClick={() => {
+              importDetected(r);
+              // Also trigger balance discover
+              setDiscoverNftAddr(r.address);
+              setShowNftDiscover(true);
+              discoverNFTBalances(r.address, r.standard, r.tokenIds);
+            }}
             className="px-2.5 h-6 text-[10px] bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-all flex-shrink-0">
             Import
           </button>
@@ -1192,6 +1335,71 @@ export default function NFTViewerPanel({ rpcUrl, deployedContracts }: Props) {
           </button>
         </div>
       ))}
+
+      {/* ── Balance Discover Panel ── */}
+      {showNftDiscover && (
+        <div className="border-b border-white/5 bg-[#13131f] flex-shrink-0 max-h-52 overflow-y-auto">
+          <div className="flex items-center justify-between px-4 py-2 sticky top-0 bg-[#13131f] border-b border-white/5">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-3 h-3 text-violet-400" />
+              <span className="text-[10px] font-semibold text-white/70">Account NFT Holdings</span>
+              {discoveringNft && <RefreshCw className="w-3 h-3 text-violet-400 animate-spin" />}
+            </div>
+            <div className="flex items-center gap-1.5">
+              {discoverNftAddr && !discoveringNft && (
+                <button
+                  onClick={() => {
+                    const contract = tokens.length > 0
+                      ? tokens[0].contractAddress
+                      : deployedContracts.find(c => c.abi.some(i => i.name === 'ownerOf'))?.address || '';
+                    const std = tokens.find(t => t.standard)?.standard || 'ERC-721';
+                    const tids = [...new Set(tokens.map(t => t.tokenId))];
+                    discoverNFTBalances(contract || discoverNftAddr, std, tids);
+                  }}
+                  className="text-[9px] px-2 py-0.5 rounded bg-violet-500/15 text-violet-400 hover:bg-violet-500/25 transition-colors">
+                  Refresh
+                </button>
+              )}
+              <button onClick={() => setShowNftDiscover(false)} className="text-white/20 hover:text-white/60">
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+          {discoveringNft ? (
+            <div className="px-4 py-3 text-[10px] text-white/30 text-center">Scanning 20 accounts…</div>
+          ) : discoverNftHolders.length === 0 ? (
+            <div className="px-4 py-3 text-[10px] text-white/25 text-center">No data yet</div>
+          ) : (
+            <div className="divide-y divide-white/5">
+              {discoverNftHolders.filter(h => h.balance721 > 0).length === 0 ? (
+                <p className="text-center py-3 text-[10px] text-white/25">No accounts hold any of these NFTs</p>
+              ) : (
+                discoverNftHolders.filter(h => h.balance721 > 0).map((h, i) => (
+                  <div key={h.address} className="flex items-center gap-3 px-4 py-2 hover:bg-white/[0.02] transition-colors">
+                    <div className="w-5 h-5 rounded-full bg-gradient-to-br from-violet-500/30 to-purple-700/20 border border-violet-500/20 flex items-center justify-center flex-shrink-0">
+                      <span className="text-[7px] font-bold text-violet-300">{parseInt(h.label.split(' ')[1])}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[10px] font-semibold text-white/75">{h.label}</div>
+                      <div className="font-mono text-[8px] text-white/25 truncate">{h.address.slice(0,12)}…{h.address.slice(-4)}</div>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                      {h.tokenIds.map(tid => (
+                        <span key={tid} className="text-[8px] bg-violet-500/15 text-violet-300/80 px-1.5 py-0.5 rounded-lg font-mono border border-violet-500/10">
+                          #{tid}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="flex-shrink-0 text-xs font-mono font-bold text-violet-300">
+                      {h.balance721}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Grid ── */}
       <div className="flex-1 px-4 py-4 overflow-y-auto">

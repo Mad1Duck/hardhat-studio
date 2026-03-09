@@ -42,6 +42,7 @@ import {
   ShieldCheck,
   Square,
   Terminal,
+  RefreshCw,
   Trash2,
   Wallet,
   Zap,
@@ -73,6 +74,7 @@ interface Props {
   onChangeProject: () => void;
   onRunCommand: (id: string) => void;
   onStopCommand: (id: string) => void;
+  onRefreshAbis: () => void;
   onSaveWorkspace: () => void;
   onLoadWorkspace: () => void;
   onResetState: () => void;
@@ -352,6 +354,7 @@ export default function Sidebar({
   onChangeProject,
   onRunCommand,
   onStopCommand,
+  onRefreshAbis,
   onSaveWorkspace,
   onLoadWorkspace,
   onResetState,
@@ -457,35 +460,51 @@ export default function Sidebar({
                 const badge = getBadge(id as any);
 
                 return (
-                  <Tooltip key={id}>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={() => onTabChange(id as any)}
-                        className={cn(
-                          'flex items-center gap-2.5 w-full px-3 py-1.5 text-xs transition-all relative',
-                          activeTab === id
-                            ? 'text-foreground bg-accent'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
-                        )}>
-                        {activeTab === id && (
-                          <span className="absolute left-0 top-1 bottom-1 w-0.5 rounded-r bg-orange-500" />
-                        )}
+                  <div key={id} className="relative flex items-center group/nav">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={() => onTabChange(id as any)}
+                          className={cn(
+                            'flex items-center gap-2.5 flex-1 px-3 py-1.5 text-xs transition-all relative',
+                            activeTab === id
+                              ? 'text-foreground bg-accent'
+                              : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+                          )}>
+                          {activeTab === id && (
+                            <span className="absolute left-0 top-1 bottom-1 w-0.5 rounded-r bg-orange-500" />
+                          )}
 
-                        <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+                          <Icon className="w-3.5 h-3.5 flex-shrink-0" />
 
-                        <span className="flex-1 font-medium text-left">{label}</span>
+                          <span className="flex-1 font-medium text-left">{label}</span>
 
-                        {badge > 0 && (
-                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-orange-500/10 text-orange-400/80">
-                            {badge}
-                          </span>
-                        )}
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="right" className="max-w-[180px] text-[11px]">
-                      {tooltip}
-                    </TooltipContent>
-                  </Tooltip>
+                          {badge > 0 && (
+                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-orange-500/10 text-orange-400/80">
+                              {badge}
+                            </span>
+                          )}
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="max-w-[180px] text-[11px]">
+                        {tooltip}
+                      </TooltipContent>
+                    </Tooltip>
+                    {id === 'abis' && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onRefreshAbis(); }}
+                            className="absolute right-1 opacity-0 group-hover/nav:opacity-100 w-5 h-5 flex items-center justify-center rounded hover:bg-accent text-muted-foreground/40 hover:text-orange-400 transition-all">
+                            <RefreshCw className="w-3 h-3" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="text-[11px]">
+                          Re-scan ABIs from project
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
                 );
               })}
           </div>

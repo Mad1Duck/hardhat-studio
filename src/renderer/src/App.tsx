@@ -913,6 +913,7 @@ ${path}`);
         onChangeProject={handleSelectProject}
         onRunCommand={handleRunCommand}
         onStopCommand={handleStopCommand}
+        onRefreshAbis={async () => { if (projectPath) setAbis(await window.api.scanAbis(projectPath)); }}
         onSaveWorkspace={handleSaveWorkspace}
         onLoadWorkspace={handleLoadWorkspace}
         onResetState={handleResetState}

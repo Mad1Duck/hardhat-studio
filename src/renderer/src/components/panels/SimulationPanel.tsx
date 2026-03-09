@@ -203,11 +203,20 @@ async function callDeployedContract(
   }
 
   // Pick highest-scoring candidate
-  const dc = candidates.reduce((best, c) => {
-    const s = scoreContractMatch(c.name, contractName);
-    const bs = scoreContractMatch(best.name, contractName);
-    return s > bs ? c : best;
-  });
+  const scored = candidates.map((c) => ({ c, score: scoreContractMatch(c.name, contractName) }));
+  scored.sort((a, b) => b.score - a.score);
+  const best = scored[0];
+
+  // If best candidate has a clearly negative score (only mock/stablecoin found),
+  // refuse to execute — fall back to simulation mode so we don't pollute real tokens
+  if (best.score < 0) {
+    return {
+      ok: false,
+      error: `No suitable contract found for "${fn}()" — available candidates look like mock/production tokens (${candidates.map(c => c.name).join(', ')}). Deploy a simulation contract or the simulation will run in mock mode.`,
+    };
+  }
+
+  const dc = best.c;
 
   const fnDef = dc.abi.find((i: any) => i.name === fn && i.type === 'function');
   if (!fnDef) return { ok: false, error: `Function "${fn}" not in ABI of ${dc.name}` };
@@ -392,6 +401,30 @@ export default function SimulationPanel({ abis, deployedContracts, rpcUrl, onTxR
 
   const activeModule = ALL_MODULES.find((m) => m.id === activeModuleId)!;
 
+  // ── Universal per-module contract selector ──────────────────────────────────
+  // Map: moduleId → contractId chosen by user
+  const [contractSelections, setContractSelections] = useState<Record<string, string>>({});
+
+  const setModuleContract = (moduleId: string, contractId: string) =>
+    setContractSelections(prev => ({ ...prev, [moduleId]: contractId }));
+
+  // Get contracts compatible with a given module (have at least 1 required method)
+  const getCompatibleContracts = (moduleId: string) => {
+    const mod = ALL_MODULES.find(m => m.id === moduleId);
+    if (!mod || mod.requiredMethods.length === 0) return deployedContracts;
+    return deployedContracts.filter(dc => {
+      const abiFns = dc.abi.filter((i: any) => i.type === 'function').map((i: any) => i.name);
+      return mod.requiredMethods.some(req => abiFns.includes(req));
+    });
+  };
+
+  // The actively selected (or auto-picked) contract for the active module
+  const compatibleForActive = getCompatibleContracts(activeModuleId);
+  const selectedContractId = contractSelections[activeModuleId] ?? '';
+  const selectedSimContract = selectedContractId
+    ? deployedContracts.find(c => c.id === selectedContractId) ?? null
+    : compatibleForActive.length === 1 ? compatibleForActive[0] : null;
+
   // Initialize param values
   useEffect(() => {
     const init: Record<string, Record<string, string>> = {};
@@ -426,11 +459,11 @@ export default function SimulationPanel({ abis, deployedContracts, rpcUrl, onTxR
       const { ethers } = await import('ethers');
       const provider = new ethers.JsonRpcProvider(rpcUrl);
 
-      // Find the best ERC20 token contract (prefer non-mock, simulation-like names)
+      // Use explicitly selected contract or auto-pick best match
       const erc20Candidates = deployedContracts.filter((dc) =>
         dc.abi.some((i: any) => i.type === 'function' && i.name === 'balanceOf'),
       );
-      const tokenContract = erc20Candidates.length > 0
+      const tokenContract = selectedSimContract ?? (erc20Candidates.length > 0
         ? erc20Candidates.reduce((best, c) => {
             const score = (n: string) => {
               let s = 0;
@@ -441,7 +474,7 @@ export default function SimulationPanel({ abis, deployedContracts, rpcUrl, onTxR
             };
             return score(c.name) >= score(best.name) ? c : best;
           })
-        : null;
+        : null);
 
       await Promise.all(currentUsers.map(async (u, idx) => {
         // Always fetch ETH balance
@@ -495,8 +528,13 @@ export default function SimulationPanel({ abis, deployedContracts, rpcUrl, onTxR
         setUsers: setUsersWrapped,
         onTxRecorded,
         sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
-        callContract: (name, fn, args, pk, rawAmounts?) =>
-          callDeployedContract(deployedContracts, rpcUrl, name, fn, args, pk, rawAmounts),
+        callContract: (name, fn, args, pk, rawAmounts?) => {
+          // Always put the selected contract first so scoring picks it
+          const effectiveContracts = selectedSimContract
+            ? [selectedSimContract, ...deployedContracts.filter(d => d.id !== selectedSimContract.id)]
+            : deployedContracts;
+          return callDeployedContract(effectiveContracts, rpcUrl, name, fn, args, pk, rawAmounts);
+        },
         getContractDecimals: async (contractName: string) => {
           const dc = deployedContracts.find((c) =>
             c.name === contractName ||
@@ -657,6 +695,76 @@ export default function SimulationPanel({ abis, deployedContracts, rpcUrl, onTxR
 
             <ScrollArea className="flex-1 overflow-y-auto">
               <div className="p-3 space-y-2.5">
+                {/* ── Universal contract selector ── */}
+                {(() => {
+                  if (compatibleForActive.length < 2) return null;
+                  const curSel = contractSelections[activeModuleId] ?? '';
+                  return (
+                    <div className="rounded-lg border border-violet-500/25 bg-violet-500/5 overflow-hidden">
+                      {/* header */}
+                      <div className="flex items-center justify-between px-2.5 py-1.5 bg-violet-500/10 border-b border-violet-500/15">
+                        <span className="text-[9px] font-semibold text-violet-300 uppercase tracking-widest flex items-center gap-1">
+                          🎯 Select Contract
+                        </span>
+                        <span className="text-[8px] text-violet-400/50">{compatibleForActive.length} compatible</span>
+                      </div>
+                      {/* contract list */}
+                      <div className="p-1.5 space-y-1">
+                        {compatibleForActive.map(c => {
+                          const isActive = curSel === c.id || (!curSel && compatibleForActive[0].id === c.id);
+                          // Which required methods does this contract implement?
+                          const abiFns = c.abi.filter((i: any) => i.type === 'function').map((i: any) => i.name as string);
+                          const matched = activeModule.requiredMethods.filter(m => abiFns.includes(m));
+                          const missing = activeModule.requiredMethods.filter(m => !abiFns.includes(m));
+                          return (
+                            <button
+                              key={c.id}
+                              disabled={running}
+                              onClick={() => setModuleContract(activeModuleId, isActive && curSel ? '' : c.id)}
+                              className={cn(
+                                'w-full text-left px-2.5 py-2 rounded border text-[10px] transition-all',
+                                isActive
+                                  ? 'border-violet-500/50 bg-violet-500/20 text-violet-100'
+                                  : 'border-border/50 hover:border-violet-500/30 hover:bg-violet-500/5 text-foreground/70 disabled:opacity-40'
+                              )}>
+                              <div className="flex items-center gap-2">
+                                {/* radio dot */}
+                                <div className={cn('w-3 h-3 rounded-full border-2 flex-shrink-0 flex items-center justify-center',
+                                  isActive ? 'border-violet-400 bg-violet-400' : 'border-muted-foreground/30')}>
+                                  {isActive && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                </div>
+                                <span className="font-semibold flex-1 truncate">{c.name}</span>
+                                {c.version && c.version > 1 && (
+                                  <span className="text-[8px] bg-violet-500/20 text-violet-400 px-1 py-0.5 rounded-full flex-shrink-0">v{c.version}</span>
+                                )}
+                                <span className="font-mono text-muted-foreground/30 text-[8px] flex-shrink-0">{c.address.slice(0,7)}…</span>
+                              </div>
+                              {/* method match indicators */}
+                              {activeModule.requiredMethods.length > 0 && (
+                                <div className="flex flex-wrap gap-0.5 mt-1.5 pl-5">
+                                  {matched.slice(0, 6).map(m => (
+                                    <span key={m} className="text-[7px] px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-400/80 font-mono">{m}()</span>
+                                  ))}
+                                  {missing.slice(0, 4).map(m => (
+                                    <span key={m} className="text-[7px] px-1 py-0.5 rounded bg-rose-500/10 text-rose-400/60 font-mono line-through">{m}()</span>
+                                  ))}
+                                </div>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {/* footer status */}
+                      <div className="px-2.5 py-1.5 border-t border-violet-500/10 text-[8px] text-violet-400/50 flex items-center gap-1">
+                        {selectedSimContract
+                          ? <>✓ <span className="text-violet-300 font-semibold">{selectedSimContract.name}</span> will be used for this simulation</>
+                          : <>Auto-selecting first compatible contract</>
+                        }
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Contract status */}
                 <ContractNotice module={activeModule} deployedContracts={deployedContracts} />
 
@@ -753,7 +861,13 @@ export default function SimulationPanel({ abis, deployedContracts, rpcUrl, onTxR
                   size="sm"
                   className="w-full gap-1.5 h-8 text-xs bg-violet-600 hover:bg-violet-500"
                   onClick={runSim}>
-                  <Play className="w-3 h-3" /> Run {activeModule.label}
+                  <Play className="w-3 h-3" />
+                  Run {activeModule.label}
+                  {selectedSimContract && compatibleForActive.length > 1 && (
+                    <span className="ml-1 opacity-70 text-[9px] truncate max-w-[60px]">
+                      · {selectedSimContract.name}
+                    </span>
+                  )}
                 </Button>
               )}
               <Button

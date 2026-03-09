@@ -91,16 +91,40 @@ function decodeUint(hex: string): bigint {
 function decodeString(hex: string): string {
   try {
     const h = hex.startsWith('0x') ? hex.slice(2) : hex;
-    if (h.length < 128) return '';
-    const offset = parseInt(h.slice(0, 64), 16) * 2;
-    const length = parseInt(h.slice(64, 128), 16) * 2;
-    const strHex = h.slice(128, 128 + length);
-    return decodeURIComponent(
-      strHex
-        .match(/.{1,2}/g)!
-        .map((b) => '%' + b)
-        .join(''),
-    );
+    if (!h || h === '') return '';
+
+    // Try ABI-encoded dynamic string (offset + length + data)
+    if (h.length >= 128) {
+      try {
+        const offset = parseInt(h.slice(0, 64), 16);
+        // Sanity check: offset should be 32 for a simple string return
+        if (offset <= 64) {
+          const length = parseInt(h.slice(64, 128), 16);
+          if (length > 0 && length < 1024) {
+            const strHex = h.slice(128, 128 + length * 2);
+            let result = '';
+            for (let i = 0; i < strHex.length; i += 2) {
+              const code = parseInt(strHex.slice(i, i + 2), 16);
+              if (code > 0 && code < 128) result += String.fromCharCode(code);
+            }
+            if (result.length > 0) return result;
+          }
+        }
+      } catch {}
+    }
+
+    // Fallback: try bytes32 encoding (right-padded ASCII, 64 hex chars)
+    if (h.length === 64) {
+      let result = '';
+      for (let i = 0; i < 64; i += 2) {
+        const code = parseInt(h.slice(i, i + 2), 16);
+        if (code === 0) break;
+        if (code > 0 && code < 128) result += String.fromCharCode(code);
+      }
+      return result;
+    }
+
+    return '';
   } catch {
     return '';
   }
@@ -130,12 +154,32 @@ async function fetchTokenInfo(
     rawBalances: {},
   };
   try {
+    // First verify the address has contract code, before making ERC-20 calls
+    const codeResult = await rpcCall(rpcUrl, 'eth_getCode', [addr, 'latest']);
+    if (!codeResult || codeResult === '0x' || codeResult === '0x0') {
+      info.error = 'No contract at this address — it may have been redeployed to a new address';
+      info.name = 'Stale address';
+      return info;
+    }
+
+    const safeEthCall = async (calldata: string): Promise<string> => {
+      try { return await ethCall(rpcUrl, addr, calldata); } catch { return '0x'; }
+    };
+
     const [nameHex, symbolHex, decimalsHex, supplyHex] = await Promise.all([
-      ethCall(rpcUrl, addr, encodeSelector('name()')!),
-      ethCall(rpcUrl, addr, encodeSelector('symbol()')!),
-      ethCall(rpcUrl, addr, encodeSelector('decimals()')!),
-      ethCall(rpcUrl, addr, encodeSelector('totalSupply()')!),
+      safeEthCall(encodeSelector('name()')!),
+      safeEthCall(encodeSelector('symbol()')!),
+      safeEthCall(encodeSelector('decimals()')!),
+      safeEthCall(encodeSelector('totalSupply()')!),
     ]);
+
+    // Validate: if all return '0x', it's not an ERC-20
+    if (nameHex === '0x' && symbolHex === '0x' && supplyHex === '0x') {
+      info.error = 'Contract exists but does not implement ERC-20 interface';
+      info.name = 'Not ERC-20';
+      return info;
+    }
+
     info.name = decodeString(nameHex) || 'Unknown';
     info.symbol = decodeString(symbolHex) || '???';
     info.decimals = decodeUint8(decimalsHex) || 18;
@@ -147,7 +191,7 @@ async function fetchTokenInfo(
       accounts.map(async (acct) => {
         try {
           const data = encodeSelector('balanceOf(address)')! + encodeAddress(acct);
-          const hex = await ethCall(rpcUrl, addr, data);
+          const hex = await safeEthCall(data);
           const raw = decodeUint(hex);
           info.rawBalances[acct] = raw.toString();
           info.balances[acct] = formatUnits(raw, info.decimals);
@@ -158,8 +202,13 @@ async function fetchTokenInfo(
       }),
     );
   } catch (e: any) {
-    info.error = e.message || 'Not a valid ERC-20';
-    info.name = 'Invalid token';
+    const msg = e.message || '';
+    if (msg.toLowerCase().includes('internal')) {
+      info.error = 'RPC error — contract may be at a different address after redeployment';
+    } else {
+      info.error = msg || 'Not a valid ERC-20';
+    }
+    info.name = 'Error';
   }
   return info;
 }
@@ -784,8 +833,16 @@ export default function AccountsPanel({ rpcUrl, onSelectAccount }: Props) {
 
                       {/* Per-account balances */}
                       {t.error ? (
-                        <div className="text-[9px] text-rose-400/70 flex items-center gap-1">
-                          <AlertCircle className="w-3 h-3" /> {t.error}
+                        <div className="space-y-1.5">
+                          <div className="text-[9px] text-rose-400/70 flex items-start gap-1">
+                            <AlertCircle className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                            <span>{t.error}</span>
+                          </div>
+                          <button
+                            onClick={() => removeToken(t.address)}
+                            className="text-[8px] px-2 py-0.5 rounded bg-rose-500/15 text-rose-400/70 border border-rose-500/20 hover:bg-rose-500/25 transition-colors w-full">
+                            Remove stale token
+                          </button>
                         </div>
                       ) : (
                         <div className="space-y-0.5">
