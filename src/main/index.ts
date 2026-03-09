@@ -1,6 +1,8 @@
 import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron';
 import { join } from 'path';
-import { spawn, ChildProcess, execSync } from 'child_process';\nimport fs from 'fs';\nimport path from 'path';\n
+import { spawn, ChildProcess, execSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
 const isDev = process.env.NODE_ENV === 'development' || !!process.env['ELECTRON_RENDERER_URL'];
 
 // ─── Auto updater ─────────────────────────────────────────────────────────────
@@ -21,15 +23,15 @@ function setupAutoUpdater(win: BrowserWindow) {
   if (!autoUpdater) return;
   const send = (payload: object) => win.webContents.send('update-status', payload);
 
-  autoUpdater.on('checking-for-update',    () => send({ type: 'checking' }));
-  autoUpdater.on('update-not-available',   () => send({ type: 'not-available' }));
-  autoUpdater.on('update-available',       (info: any) => send({ type: 'available', version: info.version, releaseNotes: info.releaseNotes }));
-  autoUpdater.on('download-progress',      (p: any)    => send({ type: 'download-progress', percent: p.percent }));
-  autoUpdater.on('update-downloaded',      (info: any) => send({ type: 'downloaded', version: info.version }));
-  autoUpdater.on('error',                  (e: Error)  => send({ type: 'error', message: e.message }));
+  autoUpdater.on('checking-for-update', () => send({ type: 'checking' }));
+  autoUpdater.on('update-not-available', () => send({ type: 'not-available' }));
+  autoUpdater.on('update-available', (info: any) => send({ type: 'available', version: info.version, releaseNotes: info.releaseNotes }));
+  autoUpdater.on('download-progress', (p: any) => send({ type: 'download-progress', percent: p.percent }));
+  autoUpdater.on('update-downloaded', (info: any) => send({ type: 'downloaded', version: info.version }));
+  autoUpdater.on('error', (e: Error) => send({ type: 'error', message: e.message }));
 
   // Check on startup after 3s
-  setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 3000);
+  setTimeout(() => autoUpdater.checkForUpdates().catch(() => { }), 3000);
 }
 
 ipcMain.handle('check-for-update', async () => {
@@ -513,7 +515,7 @@ ipcMain.handle('get-hardhat-accounts', async (_, rpcUrl: string) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_accounts', params: [] }),
     });
-    const data = await res.json() as { result?: string[]; error?: { message: string } };
+    const data = await res.json() as { result?: string[]; error?: { message: string; }; };
     if (data.result && Array.isArray(data.result) && data.result.length > 0) {
       const liveAddresses: string[] = data.result;
       // Build a lookup from our known list (lower-case address → entry)

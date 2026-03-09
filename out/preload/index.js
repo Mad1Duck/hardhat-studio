@@ -80,6 +80,17 @@ const api = {
     const fn = (_, p) => cb(p);
     electron.ipcRenderer.on("abis-changed", fn);
     return () => electron.ipcRenderer.removeListener("abis-changed", fn);
+  },
+  // ── License ──────────────────────────────────────────────────────────────
+  validateLicense: (key) => electron.ipcRenderer.invoke("validate-license", key),
+  // ── Auto updater ─────────────────────────────────────────────────────────
+  checkForUpdate: () => electron.ipcRenderer.invoke("check-for-update"),
+  downloadUpdate: () => electron.ipcRenderer.invoke("download-update"),
+  installUpdate: () => electron.ipcRenderer.invoke("install-update"),
+  onUpdateStatus: (cb) => {
+    const fn = (_, d) => cb(d);
+    electron.ipcRenderer.on("update-status", fn);
+    return () => electron.ipcRenderer.removeListener("update-status", fn);
   }
 };
 if (process.contextIsolated) {

@@ -4,6 +4,71 @@ const path = require("path");
 const child_process = require("child_process");
 const fs = require("fs");
 const isDev = process.env.NODE_ENV === "development" || !!process.env["ELECTRON_RENDERER_URL"];
+let autoUpdater = null;
+if (!isDev) {
+  try {
+    const updater = require("electron-updater");
+    autoUpdater = updater.autoUpdater;
+    autoUpdater.autoDownload = false;
+    autoUpdater.autoInstallOnAppQuit = true;
+  } catch {
+  }
+}
+function setupAutoUpdater(win) {
+  if (!autoUpdater) return;
+  const send = (payload) => win.webContents.send("update-status", payload);
+  autoUpdater.on("checking-for-update", () => send({ type: "checking" }));
+  autoUpdater.on("update-not-available", () => send({ type: "not-available" }));
+  autoUpdater.on("update-available", (info) => send({ type: "available", version: info.version, releaseNotes: info.releaseNotes }));
+  autoUpdater.on("download-progress", (p) => send({ type: "download-progress", percent: p.percent }));
+  autoUpdater.on("update-downloaded", (info) => send({ type: "downloaded", version: info.version }));
+  autoUpdater.on("error", (e) => send({ type: "error", message: e.message }));
+  setTimeout(() => autoUpdater.checkForUpdates().catch(() => {
+  }), 3e3);
+}
+electron.ipcMain.handle("check-for-update", async () => {
+  if (!autoUpdater) return false;
+  try {
+    await autoUpdater.checkForUpdates();
+    return true;
+  } catch {
+    return false;
+  }
+});
+electron.ipcMain.handle("download-update", async () => {
+  if (!autoUpdater) return false;
+  try {
+    await autoUpdater.downloadUpdate();
+    return true;
+  } catch {
+    return false;
+  }
+});
+electron.ipcMain.handle("install-update", async () => {
+  if (!autoUpdater) return false;
+  autoUpdater.quitAndInstall();
+  return true;
+});
+electron.ipcMain.handle("validate-license", async (_, key) => {
+  try {
+    const res = await fetch("https://api.lemonsqueezy.com/v1/licenses/validate", {
+      method: "POST",
+      headers: { "Accept": "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ license_key: key })
+    });
+    const data = await res.json();
+    if (data.valid) {
+      return {
+        valid: true,
+        email: data.license_key?.user_email ?? null,
+        expiresAt: data.license_key?.expires_at ?? null
+      };
+    }
+    return { valid: false, error: data.error ?? "Invalid license key" };
+  } catch (e) {
+    return { valid: false, error: String(e) };
+  }
+});
 let mainWindow = null;
 const processes = /* @__PURE__ */ new Map();
 const watchers = /* @__PURE__ */ new Map();
@@ -22,7 +87,10 @@ function createWindow() {
       contextIsolation: true
     }
   });
-  mainWindow.on("ready-to-show", () => mainWindow.show());
+  mainWindow.on("ready-to-show", () => {
+    mainWindow.show();
+    setupAutoUpdater(mainWindow);
+  });
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     electron.shell.openExternal(url);
     return { action: "deny" };
