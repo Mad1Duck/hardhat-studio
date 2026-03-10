@@ -8,24 +8,37 @@ import axios from "axios";
 import { deleteStorage, getStorage, setStorage } from "../database/storage";
 import dotenv from "dotenv";
 import { checkUserRoles } from './services/discord.api.service';
+import log from "electron-log";
 
 dotenv.config();
 // ─── Auto updater ─────────────────────────────────────────────────────────────
 // electron-updater reads publish config from package.json build.publish
 let autoUpdater: any = null;
 if (!isDev) {
-  try {
-    const updater = require('electron-updater');
-    autoUpdater = updater.autoUpdater;
-    autoUpdater.autoDownload = false;
-    autoUpdater.autoInstallOnAppQuit = true;
-  } catch {
-    // electron-updater not installed yet
-  }
-}
+  const { autoUpdater } = require("electron-updater");
 
+  autoUpdater.logger = log;
+  autoUpdater.logger.transports.file.level = "info";
+
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.allowPrerelease = false;
+  autoUpdater.allowDowngrade = false;
+}
 function setupAutoUpdater(win: BrowserWindow) {
   if (!autoUpdater) return;
+  autoUpdater.on("update-available", (info: any) => {
+    send({
+      type: "available",
+      version: info.version,
+      releaseNotes: info.releaseNotes,
+    });
+
+    if (process.env.AUTO_UPDATE === "true") {
+      autoUpdater.downloadUpdate();
+    }
+  });
   const send = (payload: object) => win.webContents.send('update-status', payload);
 
   autoUpdater.on('checking-for-update', () => send({ type: 'checking' }));
@@ -36,8 +49,27 @@ function setupAutoUpdater(win: BrowserWindow) {
   autoUpdater.on('error', (e: Error) => send({ type: 'error', message: e.message }));
 
   // Check on startup after 3s
-  setTimeout(() => autoUpdater.checkForUpdates().catch(() => { }), 3000);
+  // check on startup
+  setTimeout(() => autoUpdater.checkForUpdates(), 5000);
+
+  // check every 1 hour
+  setInterval(() => {
+    autoUpdater.checkForUpdates().catch(() => { });
+  }, 60 * 60 * 1000);
 }
+
+ipcMain.handle("force-update", async () => {
+  if (!autoUpdater) return false;
+
+  const result = await autoUpdater.checkForUpdatesAndNotify();
+  return !!result;
+});
+
+ipcMain.handle("open-download-page", async () => {
+  shell.openExternal(
+    "https://github.com/RaihanArdianata/hardhat-studio/releases"
+  );
+});
 
 ipcMain.handle('check-for-update', async () => {
   if (!autoUpdater) return false;

@@ -19,6 +19,7 @@
     "@xyflow/react": "^12.10.1",
     "axios": "^1.13.6",
     "dotenv": "^17.3.1",
+    "electron-log": "^5.4.3",
     "electron-updater": "^6.8.3",
     "ethers": "^6.11.1",
     "keytar": "^7.9.0",
@@ -63,6 +64,8 @@
     "vite": "^5.0.12"
   },
   "build": {
+    "differentialPackage": true,
+    "asar": true,
     "appId": "com.hardhatstudio.app",
     "productName": "Hardhat Studio",
     "directories": {

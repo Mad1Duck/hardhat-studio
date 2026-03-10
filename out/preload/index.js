@@ -81,7 +81,7 @@ const api = {
     electron.ipcRenderer.on("abis-changed", fn);
     return () => electron.ipcRenderer.removeListener("abis-changed", fn);
   },
-  // ── Wallet Connect ────────────────────────────────────────────────────────
+  //  Wallet Connect 
   connectWallet: () => electron.ipcRenderer.invoke("wallet-connect-popup"),
   // WalletConnect v2: get URI for inline QR (called from renderer)
   wcGetUri: () => electron.ipcRenderer.invoke("wc-get-uri"),
@@ -102,9 +102,9 @@ const api = {
   checkDiscordRole: (params) => electron.ipcRenderer.invoke("discord-check-role", params),
   getUser: () => electron.ipcRenderer.invoke("get-user"),
   logout: () => electron.ipcRenderer.invoke("logout"),
-  // ── License ──────────────────────────────────────────────────────────────
+  //  License 
   validateLicense: (key) => electron.ipcRenderer.invoke("validate-license", key),
-  // ── Auto updater ─────────────────────────────────────────────────────────
+  //  Auto updater 
   checkForUpdate: () => electron.ipcRenderer.invoke("check-for-update"),
   downloadUpdate: () => electron.ipcRenderer.invoke("download-update"),
   installUpdate: () => electron.ipcRenderer.invoke("install-update"),
