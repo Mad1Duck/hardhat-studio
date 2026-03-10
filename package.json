@@ -12,7 +12,7 @@
     "dist:mac": "bun run build && electron-builder --mac",
     "dist:win": "bun run build && electron-builder --win",
     "dist:linux": "bun run build && electron-builder --linux",
-    "build:publish": "bunx electron-builder --publish always"
+    "build:publish": "bun run build && bunx electron-builder --publish always"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
