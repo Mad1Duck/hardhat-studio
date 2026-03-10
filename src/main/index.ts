@@ -1,11 +1,14 @@
-import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, shell, BrowserWindow, ipcMain, dialog, session } from 'electron';
 import { join } from 'path';
 import { spawn, ChildProcess, execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 const isDev = process.env.NODE_ENV === 'development' || !!process.env['ELECTRON_RENDERER_URL'];
-import { resolve } from 'path';
+import axios from "axios";
+import { deleteStorage, getStorage, setStorage } from "../database/storage";
+import dotenv from "dotenv";
 
+dotenv.config();
 // ─── Auto updater ─────────────────────────────────────────────────────────────
 // electron-updater reads publish config from package.json build.publish
 let autoUpdater: any = null;
@@ -62,6 +65,38 @@ function sendWcApproved(result: { address: string; chainId: number; } | null) {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('wc-approved', result);
 }
 
+/**
+ * Get or initialise the SignClient singleton.
+ * On restart, SignClient.init() automatically restores persisted sessions
+ * from its built-in IndexedDB/filesystem store — so existing sessions survive
+ * an Electron restart without needing to re-scan the QR.
+ */
+async function getOrInitWcClient(): Promise<any> {
+  if (_wcClient) return _wcClient;
+
+  const projectId = process.env.VITE_WC_PROJECT_ID || process.env.WC_PROJECT_ID || '3721e5967517bd23fc60c504c8ded53c';
+
+  // Polyfill crypto for Node < 19
+  if (!globalThis.crypto || !(globalThis.crypto as any).getRandomValues) {
+    const nodeCrypto = require('node:crypto');
+    (globalThis as any).crypto = nodeCrypto.webcrypto;
+  }
+
+  const { SignClient } = require('@walletconnect/sign-client');
+  _wcClient = await SignClient.init({
+    projectId,
+    metadata: {
+      name: 'Hardhat Studio',
+      description: 'Professional Hardhat Development Environment',
+      url: 'https://hardhatstudio.dev',
+      icons: ['https://hardhatstudio.dev/icon.png'],
+    },
+  });
+
+  console.log('[WC] Client initialised, existing sessions:', _wcClient.session?.getAll?.()?.length ?? 0);
+  return _wcClient;
+}
+
 ipcMain.handle('wc-session-approved', async (_, result: { address: string; chainId: number; }) => {
   sendWcApproved(result);
 });
@@ -74,16 +109,8 @@ ipcMain.handle('wc-get-uri', async (): Promise<{ uri: string; } | { error: strin
   const projectId = process.env.VITE_WC_PROJECT_ID || process.env.WC_PROJECT_ID || '3721e5967517bd23fc60c504c8ded53c';
   if (!projectId) return { error: 'NO_PROJECT_ID' };
   try {
-    if (!globalThis.crypto || !(globalThis.crypto as any).getRandomValues) {
-      const nodeCrypto = require('node:crypto');
-      (globalThis as any).crypto = nodeCrypto.webcrypto;
-    }
-    const { SignClient } = require('@walletconnect/sign-client');
-    _wcClient = await SignClient.init({
-      projectId,
-      metadata: { name: 'Hardhat Studio', description: 'Professional Hardhat Development Environment', url: 'https://hardhatstudio.dev', icons: ['https://hardhatstudio.dev/icon.png'] },
-    });
-    const { uri, approval } = await _wcClient.connect({
+    const client = await getOrInitWcClient();
+    const { uri, approval } = await client.connect({
       requiredNamespaces: {
         eip155: {
           methods: ['eth_sendTransaction', 'personal_sign', 'eth_sign', 'eth_accounts', 'eth_chainId'],
@@ -110,6 +137,147 @@ ipcMain.handle('wc-get-uri', async (): Promise<{ uri: string; } | { error: strin
     return { uri };
   } catch (err: any) {
     return { error: err?.message ?? 'INIT_FAILED' };
+  }
+});
+
+// ─── WalletConnect: send transaction via active WC session ───────────────────
+// Works after restart because getOrInitWcClient() restores persisted sessions.
+ipcMain.handle('wc-send-transaction', async (_, { from, to, data, chainId }: {
+  from: string; to: string; data: string; chainId: number;
+}): Promise<{ txHash: string; } | { error: string; }> => {
+  try {
+    const client = await getOrInitWcClient();
+    const sessions = client.session?.getAll?.() ?? [];
+
+    if (!sessions.length) {
+      return { error: 'NO_WC_SESSION: No active WalletConnect session. Please reconnect your wallet via QR.' };
+    }
+
+    // Pick the most recent session
+    const session = sessions[sessions.length - 1];
+    const topic = session.topic;
+
+    console.log(`[WC] Sending tx via session ${topic.slice(0, 8)}… chainId=eip155:${chainId}`);
+
+    const txHash = await client.request({
+      topic,
+      chainId: `eip155:${chainId}`,
+      request: {
+        method: 'eth_sendTransaction',
+        params: [{ from, to, data }],
+      },
+    });
+
+    return { txHash };
+  } catch (err: any) {
+    return { error: err?.message ?? String(err) };
+  }
+});
+
+
+ipcMain.handle("get-user", async () => {
+  return await getStorage("discord_user");
+});
+
+ipcMain.handle("logout", async () => {
+  await deleteStorage("discord_user");
+});
+
+ipcMain.handle("discord-login", async () => {
+  return new Promise(async (resolve, reject) => {
+    const CLIENT_ID = process.env.DISCORD_CLIENT_ID!;
+    const CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET!;
+    const REDIRECT_URI = process.env.DISCORD_REDIRECT_URI!;
+
+
+    await session.fromPartition("oauth").clearStorageData();
+    await session.fromPartition("oauth").clearCache();
+
+    await deleteStorage("discord_access_token");
+    await deleteStorage("discord_user");
+
+    const authUrl =
+      `https://discord.com/oauth2/authorize` +
+      `?client_id=${CLIENT_ID}` +
+      `&response_type=code` +
+      `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
+      `&scope=identify`;
+
+    console.log(authUrl, "=====authUrl=====");
+    const authWindow = new BrowserWindow({
+      width: 500,
+      height: 700,
+      webPreferences: {
+        partition: "oauth",
+        nodeIntegration: false,
+        contextIsolation: true
+      }
+    });
+
+    authWindow.loadURL(authUrl);
+
+    authWindow.webContents.on("will-redirect", async (event, newUrl) => {
+      if (!newUrl.startsWith(REDIRECT_URI)) return;
+
+      event.preventDefault();
+
+      const url = new URL(newUrl);
+      const code = url.searchParams.get("code");
+
+      try {
+
+        const tokenRes = await axios.post(
+          "https://discord.com/api/oauth2/token",
+          new URLSearchParams({
+            client_id: CLIENT_ID,
+            client_secret: CLIENT_SECRET,
+            grant_type: "authorization_code",
+            code: code!,
+            redirect_uri: REDIRECT_URI,
+          }),
+          {
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+          }
+        );
+
+        const accessToken = tokenRes.data.access_token;
+
+        const userRes = await axios.get(
+          "https://discord.com/api/users/@me",
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }
+        );
+
+        const user = userRes.data;
+
+        await setStorage("discord_access_token", accessToken);
+        await setStorage("discord_user", user);
+
+        authWindow.close();
+
+        resolve(user);
+
+      } catch (err) {
+
+        authWindow.close();
+        reject(err);
+
+      }
+    });
+  });
+});
+// ─── WalletConnect: check if active session exists (used by renderer before sending tx) ──
+ipcMain.handle('wc-has-session', async (): Promise<boolean> => {
+  try {
+    const client = await getOrInitWcClient();
+    return (client.session?.getAll?.() ?? []).length > 0;
+  } catch {
+    return false;
   }
 });
 

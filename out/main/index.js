@@ -3,7 +3,23 @@ const electron = require("electron");
 const path = require("path");
 const child_process = require("child_process");
 const fs = require("fs");
+const axios = require("axios");
+const keytar = require("keytar");
+const dotenv = require("dotenv");
+const SERVICE = "hardhat-studio";
+async function setStorage(key, value) {
+  await keytar.setPassword(SERVICE, key, JSON.stringify(value));
+}
+async function getStorage(key) {
+  const value = await keytar.getPassword(SERVICE, key);
+  if (!value) return null;
+  return JSON.parse(value);
+}
+async function deleteStorage(key) {
+  await keytar.deletePassword(SERVICE, key);
+}
 const isDev = process.env.NODE_ENV === "development" || !!process.env["ELECTRON_RENDERER_URL"];
+dotenv.config();
 let autoUpdater = null;
 if (!isDev) {
   try {
@@ -58,6 +74,26 @@ function sendWcApproved(result) {
   }
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("wc-approved", result);
 }
+async function getOrInitWcClient() {
+  if (_wcClient) return _wcClient;
+  const projectId = process.env.VITE_WC_PROJECT_ID || process.env.WC_PROJECT_ID || "3721e5967517bd23fc60c504c8ded53c";
+  if (!globalThis.crypto || !globalThis.crypto.getRandomValues) {
+    const nodeCrypto = require("node:crypto");
+    globalThis.crypto = nodeCrypto.webcrypto;
+  }
+  const { SignClient } = require("@walletconnect/sign-client");
+  _wcClient = await SignClient.init({
+    projectId,
+    metadata: {
+      name: "Hardhat Studio",
+      description: "Professional Hardhat Development Environment",
+      url: "https://hardhatstudio.dev",
+      icons: ["https://hardhatstudio.dev/icon.png"]
+    }
+  });
+  console.log("[WC] Client initialised, existing sessions:", _wcClient.session?.getAll?.()?.length ?? 0);
+  return _wcClient;
+}
 electron.ipcMain.handle("wc-session-approved", async (_, result) => {
   sendWcApproved(result);
 });
@@ -67,18 +103,10 @@ electron.ipcMain.handle("wc-poll-result", async () => {
   return r;
 });
 electron.ipcMain.handle("wc-get-uri", async () => {
-  const projectId = process.env.VITE_WC_PROJECT_ID || process.env.WC_PROJECT_ID || "3721e5967517bd23fc60c504c8ded53c";
+  process.env.VITE_WC_PROJECT_ID || process.env.WC_PROJECT_ID || "3721e5967517bd23fc60c504c8ded53c";
   try {
-    if (!globalThis.crypto || !globalThis.crypto.getRandomValues) {
-      const nodeCrypto = require("node:crypto");
-      globalThis.crypto = nodeCrypto.webcrypto;
-    }
-    const { SignClient } = require("@walletconnect/sign-client");
-    _wcClient = await SignClient.init({
-      projectId,
-      metadata: { name: "Hardhat Studio", description: "Professional Hardhat Development Environment", url: "https://hardhatstudio.dev", icons: ["https://hardhatstudio.dev/icon.png"] }
-    });
-    const { uri, approval } = await _wcClient.connect({
+    const client = await getOrInitWcClient();
+    const { uri, approval } = await client.connect({
       requiredNamespaces: {
         eip155: {
           methods: ["eth_sendTransaction", "personal_sign", "eth_sign", "eth_accounts", "eth_chainId"],
@@ -88,9 +116,9 @@ electron.ipcMain.handle("wc-get-uri", async () => {
       }
     });
     if (!uri) return { error: "NO_URI" };
-    approval().then((session) => {
+    approval().then((session2) => {
       try {
-        const ns = session.namespaces?.eip155 || Object.values(session.namespaces || {})[0];
+        const ns = session2.namespaces?.eip155 || Object.values(session2.namespaces || {})[0];
         const accounts = ns?.accounts ?? [];
         if (!accounts.length) {
           sendWcApproved(null);
@@ -113,6 +141,106 @@ electron.ipcMain.handle("wc-get-uri", async () => {
     return { uri };
   } catch (err) {
     return { error: err?.message ?? "INIT_FAILED" };
+  }
+});
+electron.ipcMain.handle("wc-send-transaction", async (_, { from, to, data, chainId }) => {
+  try {
+    const client = await getOrInitWcClient();
+    const sessions = client.session?.getAll?.() ?? [];
+    if (!sessions.length) {
+      return { error: "NO_WC_SESSION: No active WalletConnect session. Please reconnect your wallet via QR." };
+    }
+    const session2 = sessions[sessions.length - 1];
+    const topic = session2.topic;
+    console.log(`[WC] Sending tx via session ${topic.slice(0, 8)}… chainId=eip155:${chainId}`);
+    const txHash = await client.request({
+      topic,
+      chainId: `eip155:${chainId}`,
+      request: {
+        method: "eth_sendTransaction",
+        params: [{ from, to, data }]
+      }
+    });
+    return { txHash };
+  } catch (err) {
+    return { error: err?.message ?? String(err) };
+  }
+});
+electron.ipcMain.handle("get-user", async () => {
+  return await getStorage("discord_user");
+});
+electron.ipcMain.handle("logout", async () => {
+  await deleteStorage("discord_user");
+});
+electron.ipcMain.handle("discord-login", async () => {
+  return new Promise(async (resolve, reject) => {
+    const CLIENT_ID = process.env.DISCORD_CLIENT_ID;
+    const CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
+    const REDIRECT_URI = process.env.DISCORD_REDIRECT_URI;
+    await electron.session.fromPartition("oauth").clearStorageData();
+    await electron.session.fromPartition("oauth").clearCache();
+    await deleteStorage("discord_access_token");
+    await deleteStorage("discord_user");
+    const authUrl = `https://discord.com/oauth2/authorize?client_id=${CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=identify`;
+    console.log(authUrl, "=====authUrl=====");
+    const authWindow = new electron.BrowserWindow({
+      width: 500,
+      height: 700,
+      webPreferences: {
+        partition: "oauth",
+        nodeIntegration: false,
+        contextIsolation: true
+      }
+    });
+    authWindow.loadURL(authUrl);
+    authWindow.webContents.on("will-redirect", async (event, newUrl) => {
+      if (!newUrl.startsWith(REDIRECT_URI)) return;
+      event.preventDefault();
+      const url = new URL(newUrl);
+      const code = url.searchParams.get("code");
+      try {
+        const tokenRes = await axios.post(
+          "https://discord.com/api/oauth2/token",
+          new URLSearchParams({
+            client_id: CLIENT_ID,
+            client_secret: CLIENT_SECRET,
+            grant_type: "authorization_code",
+            code,
+            redirect_uri: REDIRECT_URI
+          }),
+          {
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded"
+            }
+          }
+        );
+        const accessToken = tokenRes.data.access_token;
+        const userRes = await axios.get(
+          "https://discord.com/api/users/@me",
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`
+            }
+          }
+        );
+        const user = userRes.data;
+        await setStorage("discord_access_token", accessToken);
+        await setStorage("discord_user", user);
+        authWindow.close();
+        resolve(user);
+      } catch (err) {
+        authWindow.close();
+        reject(err);
+      }
+    });
+  });
+});
+electron.ipcMain.handle("wc-has-session", async () => {
+  try {
+    const client = await getOrInitWcClient();
+    return (client.session?.getAll?.() ?? []).length > 0;
+  } catch {
+    return false;
   }
 });
 electron.ipcMain.handle("validate-license", async (_, key) => {
@@ -356,7 +484,7 @@ electron.ipcMain.handle("run-command", async (_, { id, command, cwd }) => {
     }
     processes.delete(id);
   }
-  return new Promise((resolve2) => {
+  return new Promise((resolve) => {
     try {
       const isWin = process.platform === "win32";
       const child = child_process.spawn(isWin ? "cmd" : "/bin/sh", [isWin ? "/c" : "-c", command], {
@@ -373,7 +501,7 @@ electron.ipcMain.handle("run-command", async (_, { id, command, cwd }) => {
       });
       child.on("spawn", () => {
         mainWindow?.webContents.send("process-status", { id, status: "running" });
-        resolve2({ success: true });
+        resolve({ success: true });
       });
       child.on("close", (code) => {
         processes.delete(id);
@@ -382,10 +510,10 @@ electron.ipcMain.handle("run-command", async (_, { id, command, cwd }) => {
       child.on("error", (err) => {
         processes.delete(id);
         mainWindow?.webContents.send("process-status", { id, status: "error", error: err.message });
-        resolve2({ success: false, error: err.message });
+        resolve({ success: false, error: err.message });
       });
     } catch (e) {
-      resolve2({ success: false, error: String(e) });
+      resolve({ success: false, error: String(e) });
     }
   });
 });

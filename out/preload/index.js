@@ -94,6 +94,11 @@ const api = {
     electron.ipcRenderer.on("wc-approved", (_event, result) => cb(result));
     return () => electron.ipcRenderer.removeAllListeners("wc-approved");
   },
+  // WalletConnect v2: check if an active session exists (survives restarts)
+  wcHasSession: () => electron.ipcRenderer.invoke("wc-has-session"),
+  // WalletConnect v2: send transaction via active WC session (for pause/resume)
+  wcSendTransaction: (params) => electron.ipcRenderer.invoke("wc-send-transaction", params),
+  discordLogin: () => electron.ipcRenderer.invoke("discord-login"),
   // ── License ──────────────────────────────────────────────────────────────
   validateLicense: (key) => electron.ipcRenderer.invoke("validate-license", key),
   // ── Auto updater ─────────────────────────────────────────────────────────
@@ -112,6 +117,4 @@ if (process.contextIsolated) {
   } catch (error) {
     console.error(error);
   }
-} else {
-  window.api = api;
 }

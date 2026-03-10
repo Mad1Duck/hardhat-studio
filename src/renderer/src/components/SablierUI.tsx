@@ -7,7 +7,7 @@
  *   BASIC → stream ≥ $9.99/bln → Tools & Analysis
  *   PRO   → stream ≥ $29.99/bln → Semua fitur
  */
-import { useState, ReactNode, useRef, useEffect, useCallback } from 'react';
+import React, { useState, ReactNode, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Wallet,
@@ -42,11 +42,15 @@ import {
   PLAN_META,
   RECIPIENT_ADDRESS,
   Plan,
+  Status,
   PLAN_MIN_DEPOSIT,
   IS_TESTNET_MODE,
   LogEntry,
   LogLevel,
   ActiveStream,
+  THEGRAPH_ENDPOINTS,
+  CHAIN_NAMES,
+  addCustomChain,
 } from '../context/SablierContext';
 import { Button } from './ui/button';
 import { cn } from '../lib/utils';
@@ -376,6 +380,197 @@ function DebugLogPanel() {
   );
 }
 
+// ── NetworkManager ────────────────────────────────────────────────────────────
+// Shows all supported chains, lets user toggle which to search + add custom
+
+const CHAIN_ICONS: Record<number, string> = {
+  1: '🔵', // Ethereum
+  137: '🟣', // Polygon
+  42161: '🔷', // Arbitrum
+  56: '🟡', // BNB Chain
+  10: '🔴', // Optimism
+  8453: '🟦', // Base
+  10143: '⚫', // Monad
+  11155111: '🧪', // Sepolia
+  84532: '🧪', // Base Sepolia
+  421614: '🧪', // Arbitrum Sepolia
+  11155420: '🧪', // Optimism Sepolia
+};
+
+function NetworkManager() {
+  const { refresh } = useLicense();
+  const [customName, setCustomName] = useState('');
+  const [customChainId, setCustomChainId] = useState('');
+  const [customEndpoint, setCustomEndpoint] = useState('');
+  const [addError, setAddError] = useState('');
+  const [addSuccess, setAddSuccess] = useState('');
+  const [showAdd, setShowAdd] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Live snapshot of all chains (built-in + custom)
+  const [chainSnapshot, setChainSnapshot] = useState(() =>
+    Object.entries(THEGRAPH_ENDPOINTS).map(([id, ep]) => ({
+      chainId: Number(id),
+      name: CHAIN_NAMES[Number(id)] ?? `Chain ${id}`,
+      endpoint: ep,
+      isTestnet: [11155111, 84532, 421614, 11155420].includes(Number(id)),
+    })),
+  );
+
+  const handleAddChain = () => {
+    setAddError('');
+    setAddSuccess('');
+    const cid = parseInt(customChainId.trim(), 10);
+    if (isNaN(cid) || cid <= 0) {
+      setAddError('Chain ID harus angka valid');
+      return;
+    }
+    if (!customName.trim()) {
+      setAddError('Nama chain wajib diisi');
+      return;
+    }
+    if (!customEndpoint.trim().startsWith('http')) {
+      setAddError('Endpoint harus URL valid');
+      return;
+    }
+
+    addCustomChain(cid, customName.trim(), customEndpoint.trim());
+
+    setChainSnapshot((prev) => {
+      const exists = prev.find((c) => c.chainId === cid);
+      if (exists)
+        return prev.map((c) =>
+          c.chainId === cid
+            ? { ...c, name: customName.trim(), endpoint: customEndpoint.trim() }
+            : c,
+        );
+      return [
+        ...prev,
+        {
+          chainId: cid,
+          name: customName.trim(),
+          endpoint: customEndpoint.trim(),
+          isTestnet: false,
+        },
+      ];
+    });
+
+    setAddSuccess(`✓ ${customName} (${cid}) ditambahkan`);
+    setCustomName('');
+    setCustomChainId('');
+    setCustomEndpoint('');
+    setTimeout(() => setAddSuccess(''), 3000);
+  };
+
+  const handleRefreshAll = async () => {
+    setRefreshing(true);
+    await refresh();
+    setRefreshing(false);
+  };
+
+  const mainnets = chainSnapshot.filter((c) => !c.isTestnet);
+  const testnets = chainSnapshot.filter((c) => c.isTestnet);
+
+  return (
+    <div className="space-y-3">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+          Jaringan yang Di-search
+        </p>
+        <button
+          onClick={handleRefreshAll}
+          disabled={refreshing}
+          className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+          <RefreshCw className={cn('w-2.5 h-2.5', refreshing && 'animate-spin')} />
+          {refreshing ? 'Searching…' : 'Search Ulang'}
+        </button>
+      </div>
+
+      {/* Mainnet list */}
+      <div className="space-y-1">
+        <p className="text-[9px] text-muted-foreground/50 uppercase tracking-widest px-1">
+          Mainnet
+        </p>
+        {mainnets.map(({ chainId, name }) => (
+          <div
+            key={chainId}
+            className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-muted/20 border border-border/30">
+            <span className="text-sm leading-none">{CHAIN_ICONS[chainId] ?? '🔗'}</span>
+            <span className="flex-1 text-[10px] text-foreground font-medium">{name}</span>
+            <span className="text-[9px] font-mono text-muted-foreground/40">{chainId}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Testnet list */}
+      <div className="space-y-1">
+        <p className="text-[9px] text-muted-foreground/50 uppercase tracking-widest px-1">
+          Testnet
+        </p>
+        {testnets.map(({ chainId, name }) => (
+          <div
+            key={chainId}
+            className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-amber-500/5 border border-amber-500/15">
+            <span className="text-sm leading-none">{CHAIN_ICONS[chainId] ?? '🧪'}</span>
+            <span className="flex-1 text-[10px] text-amber-400/80 font-medium">{name}</span>
+            <span className="text-[9px] font-mono text-muted-foreground/40">{chainId}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Add custom chain */}
+      <div className="overflow-hidden border border-border/40 rounded-xl">
+        <button
+          onClick={() => setShowAdd((v) => !v)}
+          className="flex items-center gap-2 w-full px-3 py-2 text-[10px] text-muted-foreground hover:text-foreground bg-muted/10 hover:bg-muted/20 transition-colors">
+          <span className="text-sm">{showAdd ? '▾' : '▸'}</span>
+          <span className="font-medium">Tambah Network Custom</span>
+          <span className="ml-auto text-[9px] opacity-50">The Graph endpoint</span>
+        </button>
+
+        {showAdd && (
+          <div className="p-3 space-y-2 border-t border-border/30">
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+                placeholder="Nama (e.g. Monad Testnet)"
+                className="px-2.5 py-1.5 text-[10px] rounded-lg border border-border/50 bg-muted/20 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-violet-500/60"
+              />
+              <input
+                value={customChainId}
+                onChange={(e) => setCustomChainId(e.target.value)}
+                placeholder="Chain ID (e.g. 10143)"
+                className="px-2.5 py-1.5 text-[10px] rounded-lg border border-border/50 bg-muted/20 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-violet-500/60"
+              />
+            </div>
+            <input
+              value={customEndpoint}
+              onChange={(e) => setCustomEndpoint(e.target.value)}
+              placeholder="https://api.studio.thegraph.com/query/.../sablier-flow-.../version/latest"
+              className="w-full px-2.5 py-1.5 text-[10px] font-mono rounded-lg border border-border/50 bg-muted/20 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-violet-500/60"
+            />
+            {addError && <p className="text-[9px] text-red-400">{addError}</p>}
+            {addSuccess && <p className="text-[9px] text-emerald-400">{addSuccess}</p>}
+            <button
+              onClick={handleAddChain}
+              className="w-full py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-[10px] font-semibold transition-colors">
+              Tambahkan & Search
+            </button>
+            <p className="text-[9px] text-muted-foreground/40 leading-relaxed">
+              Endpoint harus Sablier Flow subgraph di The Graph Studio. Format:{' '}
+              <code className="text-violet-400/60">
+                api.studio.thegraph.com/query/ID/sablier-flow-CHAIN/version/latest
+              </code>
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // LicenseGate — wrapper panel, tampilkan upgrade jika plan tidak cukup
 export function LicenseGate({
   feature,
@@ -466,27 +661,66 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
     chainId,
     chainName,
     activeStream,
+    availableStreams,
+    selectedStreamId,
+    selectStream,
+    tokenPrice,
     currentPlan,
     isDev,
     error,
     connect,
     disconnect,
+    logout,
     refresh,
+    pauseStream,
+    resumeStream,
+    streamActionPending,
+    selectedChainId,
+    setSelectedChainId,
   } = useLicense();
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'status' | 'plans'>('status');
+  const [streamAction, setStreamAction] = useState<'pause' | 'resume' | null>(null);
+  const [streamActionError, setStreamActionError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'status' | 'plans' | 'networks'>('status');
   const [wcQrUri, setWcQrUri] = useState<string | null>(null);
   const [wcQrLoading, setWcQrLoading] = useState(false);
   const [wcQrError, setWcQrError] = useState<string | null>(null);
   const wcPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const isConnected = !!walletAddress;
-  const hasPaidPlan = status === 'basic' || status === 'pro';
+  const hasPaidPlan = status === 'basic' || status === 'pro' || isDev;
+  // Stream exists but locked (paused or debt) — show stream card but with lock banner
+  const hasLockedStream = (status as string) === 'paused' || (status as string) === 'debt';
+  const showStreamCard = hasPaidPlan || hasLockedStream;
 
   const handleRefresh = async () => {
     setRefreshing(true);
     await refresh();
     setRefreshing(false);
+  };
+
+  const handlePause = async () => {
+    setStreamAction('pause');
+    setStreamActionError(null);
+    try {
+      await pauseStream();
+    } catch (e: any) {
+      setStreamActionError(e.message ?? 'Pause failed');
+    } finally {
+      setStreamAction(null);
+    }
+  };
+
+  const handleResume = async () => {
+    setStreamAction('resume');
+    setStreamActionError(null);
+    try {
+      await resumeStream();
+    } catch (e: any) {
+      setStreamActionError(e.message ?? 'Resume failed');
+    } finally {
+      setStreamAction(null);
+    }
   };
 
   // Toggle inline QR — no popup, QR appears directly in UI
@@ -633,17 +867,23 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
 
         {/* Tab bar */}
         <div className="flex flex-shrink-0 border-b border-border/40">
-          {(['status', 'plans'] as const).map((tab) => (
+          {(
+            [
+              { id: 'status', label: '📡 Status' },
+              { id: 'networks', label: '🌐 Networks' },
+              { id: 'plans', label: '📋 Fitur' },
+            ] as const
+          ).map((tab) => (
             <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
               className={cn(
                 'flex-1 py-2.5 text-xs font-medium transition-colors',
-                activeTab === tab
+                activeTab === tab.id
                   ? 'text-foreground border-b-2 border-violet-500'
                   : 'text-muted-foreground hover:text-foreground',
               )}>
-              {tab === 'status' ? '📡 Status & Stream' : '📋 Daftar Fitur'}
+              {tab.label}
             </button>
           ))}
         </div>
@@ -679,9 +919,95 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                 </div>
               )}
 
+              {/* Logout row — always visible when paid/connected */}
+              {(hasPaidPlan || hasLockedStream) && walletAddress && (
+                <div className="flex items-center justify-between px-1 -mb-1">
+                  <span className="text-[10px] text-muted-foreground/50 font-mono">
+                    {fmt.addr(walletAddress)}
+                    {selectedChainId && (
+                      <span className="ml-1.5 text-[9px] opacity-60">
+                        · {CHAIN_NAMES[selectedChainId] ?? `Chain ${selectedChainId}`}
+                      </span>
+                    )}
+                  </span>
+                  <button
+                    onClick={logout}
+                    className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-red-400 transition-colors">
+                    <LogOut className="w-3 h-3" /> Logout
+                  </button>
+                </div>
+              )}
+
               {/* Active stream card */}
-              {hasPaidPlan && activeStream && (
+              {showStreamCard && activeStream && (
                 <div className="space-y-3">
+                  {/* Multi-stream selector — shown when >1 stream available */}
+                  {availableStreams.length > 1 && (
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wider font-semibold px-0.5">
+                        Streams ({availableStreams.length})
+                      </p>
+                      <div className="space-y-1.5">
+                        {availableStreams.map((s) => {
+                          const isSelected = s.streamId === selectedStreamId;
+                          const isLocked = s.paused || s.hasDebt;
+                          return (
+                            <button
+                              key={s.streamId}
+                              onClick={() => selectStream(s.streamId)}
+                              className={cn(
+                                'w-full flex items-center justify-between px-3 py-2 rounded-lg border text-left transition-all',
+                                isSelected
+                                  ? 'border-violet-500/40 bg-violet-500/10 ring-1 ring-violet-500/20'
+                                  : 'border-border/40 bg-muted/20 hover:border-border/70 hover:bg-muted/40',
+                              )}>
+                              <div className="flex items-center min-w-0 gap-2">
+                                <div
+                                  className={cn(
+                                    'w-1.5 h-1.5 rounded-full flex-shrink-0',
+                                    s.paused
+                                      ? 'bg-amber-400'
+                                      : s.hasDebt
+                                        ? 'bg-red-400'
+                                        : 'bg-emerald-400 animate-pulse',
+                                  )}
+                                />
+                                <div className="min-w-0">
+                                  <p className="font-mono text-xs font-medium truncate">
+                                    {s.streamAlias}
+                                  </p>
+                                  <p className="text-[10px] text-muted-foreground">
+                                    {s.chainName} · {s.tokenSymbol}
+                                    {s.paused && (
+                                      <span className="ml-1 text-amber-400">· Paused</span>
+                                    )}
+                                    {s.hasDebt && <span className="ml-1 text-red-400">· Debt</span>}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-center flex-shrink-0 gap-2 ml-2">
+                                {(() => {
+                                  const rate = Number(s.ratePerSecond) / 10 ** s.tokenDecimals;
+                                  const mo = rate * 86400 * 30;
+                                  const usd = tokenPrice != null ? mo * tokenPrice : null;
+                                  return (
+                                    <span className="text-[10px] text-muted-foreground text-right">
+                                      {usd != null
+                                        ? `$${usd.toFixed(2)}/mo`
+                                        : `${mo.toFixed(4)} ${s.tokenSymbol}/mo`}
+                                    </span>
+                                  );
+                                })()}
+                                {isSelected && (
+                                  <div className="w-1.5 h-1.5 rounded-full bg-violet-400" />
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                   <div
                     className={cn(
                       'p-4 rounded-xl border space-y-3',
@@ -693,13 +1019,23 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                       <div className="flex items-center gap-2">
                         <div
                           className={cn(
-                            'w-2 h-2 rounded-full animate-pulse',
-                            currentPlan === 'pro' ? 'bg-violet-400' : 'bg-blue-400',
+                            'w-2 h-2 rounded-full',
+                            hasLockedStream ? 'bg-amber-400' : 'animate-pulse',
+                            !hasLockedStream && currentPlan === 'pro' ? 'bg-violet-400' : '',
+                            !hasLockedStream && currentPlan !== 'pro' ? 'bg-blue-400' : '',
                           )}
                         />
                         <PlanIcon plan={currentPlan} className="w-3.5 h-3.5" />
-                        <span className={cn('text-xs font-semibold', PLAN_META[currentPlan].color)}>
-                          {PLAN_META[currentPlan].label} — {PLAN_META[currentPlan].desc}
+                        <span
+                          className={cn(
+                            'text-xs font-semibold',
+                            hasLockedStream ? 'text-amber-400' : PLAN_META[currentPlan].color,
+                          )}>
+                          {hasLockedStream
+                            ? (status as string) === 'paused'
+                              ? '⏸ Stream Paused — Features Locked'
+                              : '⚠ Stream Has Debt — Features Locked'
+                            : `${PLAN_META[currentPlan].label} — ${PLAN_META[currentPlan].desc}`}
                         </span>
                       </div>
                       <span className="text-[10px] font-mono text-muted-foreground">
@@ -708,39 +1044,147 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                     </div>
 
                     <div className="grid grid-cols-2 text-xs gap-x-4 gap-y-2">
-                      {[
-                        ['Token', activeStream.tokenSymbol],
-                        ['Network', activeStream.chainName],
-                        [
-                          'Deposit',
-                          `${fmt.usd(activeStream.depositAmount)} ${activeStream.tokenSymbol}`,
-                        ],
-                        [
-                          'Withdrawn',
-                          `${fmt.usd(activeStream.withdrawnAmount)} ${activeStream.tokenSymbol}`,
-                        ],
-                        ['Mulai', fmt.date(activeStream.startTime)],
-                        ['Berakhir', fmt.date(activeStream.endTime)],
-                      ].map(([l, v]) => (
-                        <div key={l} className="space-y-0.5">
-                          <p className="text-muted-foreground">{l}</p>
-                          <p className="font-medium text-foreground">{v}</p>
-                        </div>
-                      ))}
+                      {/* Token + Network */}
+                      <div className="space-y-0.5">
+                        <p className="text-muted-foreground">Token</p>
+                        <p className="font-medium">{activeStream.tokenSymbol}</p>
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="text-muted-foreground">Network</p>
+                        <p className="font-medium">{activeStream.chainName}</p>
+                      </div>
+                      {/* Net Deposits (total ever deposited by sender) */}
+                      <div className="space-y-0.5">
+                        <p className="text-muted-foreground">Net Deposit</p>
+                        <p className="font-medium">
+                          {fmt.usd(activeStream.netDeposited ?? activeStream.depositAmount)}{' '}
+                          {activeStream.tokenSymbol}
+                        </p>
+                      </div>
+                      {/* Balance = refundable / remaining in stream */}
+                      <div className="space-y-0.5">
+                        <p className="text-muted-foreground">Balance</p>
+                        <p className="font-medium">
+                          {fmt.usd(activeStream.balance)} {activeStream.tokenSymbol}
+                        </p>
+                      </div>
+                      {/* Withdrawn by recipient */}
+                      <div className="space-y-0.5">
+                        <p className="text-muted-foreground">Withdrawn</p>
+                        <p className="font-medium">
+                          {fmt.usd(activeStream.withdrawnAmount)} {activeStream.tokenSymbol}
+                        </p>
+                      </div>
+                      {/* Debt — shown in red if > 0 */}
+                      <div className="space-y-0.5">
+                        <p
+                          className={cn(
+                            'text-muted-foreground',
+                            activeStream.hasDebt && 'text-red-400 font-semibold',
+                          )}>
+                          {activeStream.hasDebt ? '⚠ Debt' : 'Debt'}
+                        </p>
+                        <p
+                          className={cn(
+                            'font-medium',
+                            activeStream.hasDebt ? 'text-red-400' : 'text-foreground',
+                          )}>
+                          {activeStream.hasDebt
+                            ? `${fmt.usd(activeStream.debtRaw)} ${activeStream.tokenSymbol}`
+                            : '—'}
+                        </p>
+                      </div>
+                      {/* Dates */}
+                      <div className="space-y-0.5">
+                        <p className="text-muted-foreground">Mulai</p>
+                        <p className="font-medium">{fmt.date(activeStream.startTime)}</p>
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="text-muted-foreground">Berakhir</p>
+                        <p className="font-medium">{fmt.date(activeStream.endTime)}</p>
+                      </div>
                     </div>
 
                     <StreamProgressBar stream={activeStream} plan={currentPlan} />
                   </div>
 
-                  {/* Refresh + Log Panel */}
+                  {/* Security lock banners */}
+                  {(status as string) === 'paused' && (
+                    <div className="flex items-start gap-2 p-3 text-xs border rounded-lg border-amber-500/30 bg-amber-500/10">
+                      <span className="text-base leading-none text-amber-400">⏸</span>
+                      <div>
+                        <p className="font-semibold text-amber-400">Stream Paused</p>
+                        <p className="text-amber-400/70 mt-0.5">
+                          Semua fitur Basic &amp; Pro terkunci. Resume stream untuk mengaktifkan
+                          kembali.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {(status as string) === 'debt' && (
+                    <div className="flex items-start gap-2 p-3 text-xs border rounded-lg border-red-500/30 bg-red-500/10">
+                      <span className="text-base leading-none text-red-400">⚠</span>
+                      <div>
+                        <p className="font-semibold text-red-400">Stream Has Debt</p>
+                        <p className="text-red-400/70 mt-0.5">
+                          Sender perlu top-up stream. Fitur terkunci sampai debt = 0.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Stream Controls */}
                   <div className="space-y-2">
-                    <button
-                      onClick={handleRefresh}
-                      disabled={refreshing}
-                      className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors mx-auto">
-                      <RefreshCw className={cn('w-3 h-3', refreshing && 'animate-spin')} />
-                      {refreshing ? 'Mengecek…' : 'Refresh status stream'}
-                    </button>
+                    {/* Pause / Resume buttons */}
+                    <div className="flex items-center gap-2">
+                      {activeStream?.paused ? (
+                        <Button
+                          size="sm"
+                          disabled={!!streamAction || streamActionPending}
+                          onClick={handleResume}
+                          className="flex-1 h-7 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white border-0">
+                          {streamAction === 'resume' ? (
+                            <>
+                              <RefreshCw className="w-3 h-3 animate-spin" /> Resuming…
+                            </>
+                          ) : (
+                            <>
+                              <Activity className="w-3 h-3" /> Resume Stream
+                            </>
+                          )}
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!!streamAction || streamActionPending}
+                          onClick={handlePause}
+                          className="flex-1 h-7 text-xs gap-1.5 border-amber-500/30 text-amber-400 hover:bg-amber-500/10 hover:border-amber-500/50">
+                          {streamAction === 'pause' ? (
+                            <>
+                              <RefreshCw className="w-3 h-3 animate-spin" /> Pausing…
+                            </>
+                          ) : (
+                            <>
+                              <Clock className="w-3 h-3" /> Pause Stream
+                            </>
+                          )}
+                        </Button>
+                      )}
+                      <button
+                        onClick={handleRefresh}
+                        disabled={refreshing}
+                        className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5 rounded border border-border/40 hover:border-border/60">
+                        <RefreshCw className={cn('w-3 h-3', refreshing && 'animate-spin')} />
+                        {refreshing ? 'Cek…' : 'Refresh'}
+                      </button>
+                    </div>
+                    {streamActionError && (
+                      <div className="flex items-start gap-2 p-2 rounded-lg bg-red-500/10 border border-red-500/20 text-[10px] text-red-400">
+                        <AlertCircle className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                        <span className="break-all">{streamActionError}</span>
+                      </div>
+                    )}
                     <DebugLogPanel />
                   </div>
                 </div>
@@ -756,6 +1200,76 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                     </div>
                   )}
 
+                  {/* Network Selector — shown before connect */}
+                  {!isConnected && (
+                    <div className="overflow-hidden border rounded-xl border-border/40">
+                      <div className="px-3 py-2 border-b bg-muted/10 border-border/30">
+                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                          🌐 Pilih Network Stream
+                        </p>
+                        <p className="text-[9px] text-muted-foreground/50 mt-0.5">
+                          Pilih network tempat kamu membuat Sablier stream. Kosongkan untuk
+                          auto-detect.
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1 p-2 overflow-y-auto max-h-48">
+                        {/* Auto option */}
+                        <button
+                          onClick={() => setSelectedChainId(null)}
+                          className={cn(
+                            'col-span-2 flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[10px] font-medium transition-colors border',
+                            selectedChainId === null
+                              ? 'bg-violet-500/20 border-violet-500/50 text-violet-300'
+                              : 'border-border/30 text-muted-foreground hover:bg-muted/20 hover:text-foreground',
+                          )}>
+                          <span>🔍</span>
+                          <span className="flex-1 text-left">Auto-detect (search all chains)</span>
+                          {selectedChainId === null && <span className="text-violet-400">✓</span>}
+                        </button>
+                        {/* Chain options */}
+                        {Object.entries(THEGRAPH_ENDPOINTS).map(([cid]) => {
+                          const id = Number(cid);
+                          const name = CHAIN_NAMES[id] ?? `Chain ${id}`;
+                          const isTestnet = [11155111, 84532, 421614, 11155420].includes(id);
+                          const icons: Record<number, string> = {
+                            1: '🔵',
+                            137: '🟣',
+                            42161: '🔷',
+                            8453: '🟦',
+                            10: '🔴',
+                            56: '🟡',
+                            43114: '🔺',
+                            534352: '📜',
+                            100: '🍀',
+                            59144: '🔵',
+                            146: '🔊',
+                            11155111: '🧪',
+                            84532: '🧪',
+                            421614: '🧪',
+                            11155420: '🧪',
+                          };
+                          return (
+                            <button
+                              key={id}
+                              onClick={() => setSelectedChainId(id)}
+                              className={cn(
+                                'flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[9px] font-medium transition-colors border text-left',
+                                selectedChainId === id
+                                  ? isTestnet
+                                    ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
+                                    : 'bg-violet-500/20 border-violet-500/50 text-violet-300'
+                                  : 'border-border/20 text-muted-foreground hover:bg-muted/20 hover:text-foreground',
+                              )}>
+                              <span>{icons[id] ?? '🔗'}</span>
+                              <span className="flex-1 truncate">{name}</span>
+                              {selectedChainId === id && <span className="text-[8px]">✓</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Step 1 — Wallet Connect */}
                   <StepCard
                     step={1}
@@ -764,15 +1278,15 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                     title={isConnected ? fmt.addr(walletAddress!) : 'Connect Wallet'}
                     subtitle={
                       isConnected
-                        ? (chainName ?? `Chain ${chainId}`)
+                        ? `${chainName ?? `Chain ${chainId}`}${selectedChainId ? ` · Stream on ${CHAIN_NAMES[selectedChainId] ?? selectedChainId}` : ' · Auto-detect'}`
                         : 'WalletConnect QR · MetaMask · Trust · Rabby'
                     }
                     right={
                       isConnected ? (
                         <button
-                          onClick={disconnect}
-                          className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors">
-                          <LogOut className="w-3 h-3" /> Disconnect
+                          onClick={logout}
+                          className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-red-400 transition-colors">
+                          <LogOut className="w-3 h-3" /> Logout
                         </button>
                       ) : null
                     }
@@ -897,6 +1411,13 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* TAB: NETWORKS */}
+          {activeTab === 'networks' && (
+            <div className="p-5">
+              <NetworkManager />
             </div>
           )}
 
@@ -1246,47 +1767,45 @@ function StreamPaymentCard({ stream, plan }: { stream: ActiveStream; plan: Plan 
 
 // LicenseBadge — sidebar footer
 export function LicenseBadge({ onClick }: { onClick?: () => void }) {
-  const { status, currentPlan, activeStream, isDev } = useLicense();
+  const {
+    status,
+    currentPlan,
+    activeStream,
+    walletAddress,
+    chainName,
+    chainId,
+    isDev,
+    pauseStream,
+    resumeStream,
+    streamActionPending,
+  } = useLicense();
   const [showModal, setShowModal] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [tooltipStyle, setTooltipStyle] = useState<React.CSSProperties>({});
-  const badgeRef = useRef<HTMLButtonElement>(null);
+  const badgeRef = useRef<HTMLDivElement>(null);
 
-  const hasPaidPlan = status === 'basic' || status === 'pro';
+  const hasPaidPlan = status === 'basic' || status === 'pro' || isDev || status === 'dev';
 
-  // Calculate fixed position via getBoundingClientRect so Portal renders correctly
-  // regardless of sidebar overflow:hidden clipping
+  const updateTooltipPos = () => {
+    if (!badgeRef.current) return;
+    const rect = badgeRef.current.getBoundingClientRect();
+    const W = 292;
+    // Always show ABOVE the badge, anchored to right edge of sidebar
+    const left = Math.max(8, rect.left - W + rect.width);
+    setTooltipStyle({
+      position: 'fixed',
+      bottom: window.innerHeight - rect.top + 10,
+      left,
+      width: W,
+      zIndex: 99999,
+    });
+  };
+
   const handleMouseEnter = () => {
-    if (badgeRef.current) {
-      const rect = badgeRef.current.getBoundingClientRect();
-      const tooltipWidth = 280;
-      const tooltipHeight = 340; // approximate
-      const spaceAbove = rect.top;
-      const left = rect.left + rect.width / 2 - tooltipWidth / 2;
-      const clampedLeft = Math.max(8, Math.min(left, window.innerWidth - tooltipWidth - 8));
-
-      if (spaceAbove > tooltipHeight + 12) {
-        // show above
-        setTooltipStyle({
-          position: 'fixed',
-          bottom: window.innerHeight - rect.top + 8,
-          left: clampedLeft,
-          zIndex: 9999,
-          filter: 'drop-shadow(0 8px 32px rgba(0,0,0,0.7))',
-        });
-      } else {
-        // show below
-        setTooltipStyle({
-          position: 'fixed',
-          top: rect.bottom + 8,
-          left: clampedLeft,
-          zIndex: 9999,
-          filter: 'drop-shadow(0 8px 32px rgba(0,0,0,0.7))',
-        });
-      }
-    }
+    updateTooltipPos();
     setHovered(true);
   };
+  const handleMouseLeave = () => setHovered(false);
 
   const cfg =
     isDev || status === 'dev'
@@ -1325,21 +1844,38 @@ export function LicenseBadge({ onClick }: { onClick?: () => void }) {
                   cls: 'text-orange-400 bg-orange-500/10 border-orange-500/20',
                 };
 
+  const showTooltip = hovered && hasPaidPlan && !!walletAddress;
+
   return (
-    <div onMouseEnter={handleMouseEnter} onMouseLeave={() => setHovered(false)}>
-      {/* Payment tooltip via Portal — bypasses sidebar overflow:hidden */}
-      {hovered &&
-        hasPaidPlan &&
-        activeStream &&
+    <div
+      ref={badgeRef}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={(e) => {
+        // Only hide if not hovering over the tooltip itself
+        const related = e.relatedTarget as HTMLElement | null;
+        if (related && related.closest?.('[data-tooltip-root]')) return;
+        handleMouseLeave();
+      }}>
+      {/* Portal tooltip — renders into document.body, bypasses sidebar overflow:hidden */}
+      {showTooltip &&
         createPortal(
-          <div style={tooltipStyle} className="pointer-events-none">
-            <StreamPaymentCard stream={activeStream} plan={currentPlan} />
-          </div>,
+          <StreamInfoTooltip
+            style={tooltipStyle}
+            status={status}
+            currentPlan={currentPlan}
+            activeStream={activeStream}
+            walletAddress={walletAddress}
+            chainName={chainName}
+            chainId={chainId}
+            isDev={isDev}
+            onPause={pauseStream}
+            onResume={resumeStream}
+            streamActionPending={streamActionPending}
+          />,
           document.body,
         )}
 
       <button
-        ref={badgeRef}
         onClick={() => {
           onClick?.();
           setShowModal(true);
@@ -1351,9 +1887,489 @@ export function LicenseBadge({ onClick }: { onClick?: () => void }) {
         )}>
         {cfg.icon}
         <span className="flex-1 text-left">{cfg.text}</span>
-        {hasPaidPlan && activeStream && <TrendingUp className="w-2.5 h-2.5 opacity-50" />}
+        {hasPaidPlan && <TrendingUp className="w-2.5 h-2.5 opacity-40" />}
       </button>
       {showModal && <LicenseModal onClose={() => setShowModal(false)} />}
+    </div>
+  );
+}
+
+// ── StreamInfoTooltip ─────────────────────────────────────────────────────────
+// Standalone tooltip — works with OR without activeStream (dev/testnet bypass)
+
+function StreamInfoTooltip({
+  style,
+  status,
+  currentPlan,
+  activeStream,
+  walletAddress,
+  chainName,
+  chainId,
+  isDev,
+  onPause,
+  onResume,
+  streamActionPending,
+}: {
+  style: React.CSSProperties;
+  status: Status;
+  currentPlan: Plan;
+  activeStream?: ActiveStream;
+  walletAddress?: string;
+  chainName?: string;
+  chainId?: number;
+  isDev: boolean;
+  onPause: () => Promise<void>;
+  onResume: () => Promise<void>;
+  streamActionPending: boolean;
+}) {
+  const [localAction, setLocalAction] = useState<'pause' | 'resume' | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  const handlePauseClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLocalAction('pause');
+    setLocalError(null);
+    try {
+      await onPause();
+    } catch (err: any) {
+      setLocalError(err.message ?? 'Error');
+    } finally {
+      setLocalAction(null);
+    }
+  };
+  const handleResumeClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLocalAction('resume');
+    setLocalError(null);
+    try {
+      await onResume();
+    } catch (err: any) {
+      setLocalError(err.message ?? 'Error');
+    } finally {
+      setLocalAction(null);
+    }
+  };
+  const { price: tokenPrice, loading: priceLoading } = useTokenPrice(activeStream?.tokenSymbol);
+  const [now, setNow] = useState(() => Date.now() / 1000);
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now() / 1000), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const planColor =
+    currentPlan === 'pro' ? '#a78bfa' : currentPlan === 'basic' ? '#60a5fa' : '#6ee7b7';
+  const planBorder =
+    currentPlan === 'pro'
+      ? 'rgba(167,139,250,0.2)'
+      : currentPlan === 'basic'
+        ? 'rgba(96,165,250,0.2)'
+        : 'rgba(110,231,183,0.2)';
+  const planGradient =
+    currentPlan === 'pro'
+      ? 'rgba(167,139,250,0.6)'
+      : currentPlan === 'basic'
+        ? 'rgba(96,165,250,0.6)'
+        : 'rgba(110,231,183,0.6)';
+  const planBg =
+    currentPlan === 'pro'
+      ? 'rgba(167,139,250,0.05)'
+      : currentPlan === 'basic'
+        ? 'rgba(96,165,250,0.05)'
+        : 'rgba(110,231,183,0.05)';
+
+  // ── With stream data ──
+  let ratePerSec = 0,
+    ratePerMin = 0,
+    ratePerHour = 0,
+    ratePerDay = 0,
+    ratePerMonth = 0;
+  let totalStreamedTokens = 0;
+  let usdPerDay: number | null = null,
+    usdPerMonth: number | null = null,
+    usdTotal: number | null = null;
+  let decimals = 6;
+
+  if (activeStream) {
+    decimals = activeStream.tokenDecimals;
+    ratePerSec = Number(activeStream.ratePerSecond) / 10 ** decimals;
+    ratePerMin = ratePerSec * 60;
+    ratePerHour = ratePerSec * 3600;
+    ratePerDay = ratePerSec * 86400;
+    ratePerMonth = ratePerSec * 86400 * 30;
+    const withdrawn = Number(activeStream.withdrawnAmount) / 10 ** decimals;
+    const liveAccrued = ratePerSec * Math.max(0, now - activeStream.lastAdjustmentTime);
+    totalStreamedTokens = withdrawn + liveAccrued;
+
+    if (tokenPrice != null) {
+      usdPerDay = ratePerDay * tokenPrice;
+      usdPerMonth = ratePerMonth * tokenPrice;
+      usdTotal = totalStreamedTokens * tokenPrice;
+    }
+  }
+
+  const fmtAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
+  const fmtUsd = (n: number) =>
+    n < 0.001
+      ? '<$0.001'
+      : `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const fmtTok = (n: number, sym: string) => {
+    const s =
+      n < 0.00001
+        ? n.toExponential(3)
+        : n.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 6 });
+    return `${s} ${sym}`;
+  };
+
+  return (
+    <div
+      style={{
+        ...style,
+        background: 'hsl(var(--card, 222 47% 11%))',
+        border: `1px solid ${planBorder}`,
+        borderRadius: 14,
+        overflow: 'hidden',
+        fontFamily: 'inherit',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.04)',
+      }}>
+      {/* Top gradient line */}
+      <div
+        style={{
+          height: 2,
+          background: `linear-gradient(90deg, transparent, ${planGradient}, transparent)`,
+        }}
+      />
+
+      {/* Header — wallet + plan + network */}
+      <div style={{ padding: '10px 12px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 4,
+          }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: planColor,
+                boxShadow: `0 0 6px ${planColor}`,
+                animation: 'pulse 2s infinite',
+              }}
+            />
+            <span
+              style={{ fontSize: 10, fontWeight: 700, color: planColor, letterSpacing: '0.02em' }}>
+              {isDev ? 'Dev Mode' : `${PLAN_META[currentPlan].label} Plan`}
+            </span>
+          </div>
+          <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', fontFamily: 'monospace' }}>
+            {chainName ?? `Chain ${chainId}`}
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', fontFamily: 'monospace' }}>
+            {walletAddress ? fmtAddr(walletAddress) : '—'}
+          </span>
+          {activeStream && (
+            <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', fontFamily: 'monospace' }}>
+              {activeStream.tokenSymbol}
+              {tokenPrice != null && (
+                <span style={{ color: '#6ee7b7', marginLeft: 4 }}>
+                  @ ${tokenPrice.toLocaleString('en-US', { maximumFractionDigits: 4 })}
+                </span>
+              )}
+              {priceLoading && (
+                <span style={{ color: 'rgba(255,255,255,0.2)', marginLeft: 4 }}>…</span>
+              )}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {activeStream ? (
+        <>
+          {/* Rate rows */}
+          <div style={{ padding: '8px 12px 6px' }}>
+            <div
+              style={{
+                fontSize: 9,
+                fontWeight: 700,
+                color: 'rgba(255,255,255,0.3)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                marginBottom: 6,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}>
+              <span>⚡</span> Rate Transfer
+            </div>
+            {[
+              {
+                label: 'Per detik',
+                tok: ratePerSec,
+                usd: tokenPrice != null ? ratePerSec * tokenPrice : null,
+              },
+              {
+                label: 'Per menit',
+                tok: ratePerMin,
+                usd: tokenPrice != null ? ratePerMin * tokenPrice : null,
+              },
+              {
+                label: 'Per jam',
+                tok: ratePerHour,
+                usd: tokenPrice != null ? ratePerHour * tokenPrice : null,
+              },
+              { label: 'Per hari', tok: ratePerDay, usd: usdPerDay },
+              { label: 'Per bulan', tok: ratePerMonth, usd: usdPerMonth },
+            ].map(({ label, tok, usd }) => (
+              <div
+                key={label}
+                style={{ display: 'flex', alignItems: 'center', padding: '2px 0', gap: 4 }}>
+                <span
+                  style={{
+                    fontSize: 9,
+                    color: 'rgba(255,255,255,0.35)',
+                    width: 58,
+                    flexShrink: 0,
+                  }}>
+                  {label}
+                </span>
+                <span
+                  style={{
+                    fontSize: 9,
+                    fontFamily: 'monospace',
+                    color: 'rgba(255,255,255,0.65)',
+                    flex: 1,
+                    textAlign: 'right',
+                  }}>
+                  {fmtTok(tok, activeStream.tokenSymbol)}
+                </span>
+                <span
+                  style={{
+                    fontSize: 9,
+                    fontWeight: 600,
+                    color: usd != null ? '#6ee7b7' : 'rgba(255,255,255,0.2)',
+                    width: 62,
+                    textAlign: 'right',
+                    fontFamily: 'monospace',
+                  }}>
+                  {usd != null ? fmtUsd(usd) : '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ margin: '0 12px', height: 1, background: 'rgba(255,255,255,0.06)' }} />
+
+          {/* Total streamed — live counter */}
+          <div style={{ padding: '8px 12px 10px' }}>
+            <div
+              style={{
+                fontSize: 9,
+                fontWeight: 700,
+                color: 'rgba(255,255,255,0.3)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                marginBottom: 6,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}>
+              <span>📈</span> Total Dikirim (Live)
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-end',
+                justifyContent: 'space-between',
+                marginBottom: 6,
+              }}>
+              <div>
+                <div
+                  style={{
+                    fontSize: 15,
+                    fontWeight: 700,
+                    color: 'white',
+                    fontFamily: 'monospace',
+                    letterSpacing: '-0.02em',
+                  }}>
+                  {fmtTok(totalStreamedTokens, activeStream.tokenSymbol)}
+                </div>
+                {usdTotal != null && (
+                  <div style={{ fontSize: 11, fontWeight: 600, color: planColor, marginTop: 1 }}>
+                    ≈ {fmtUsd(usdTotal)}
+                  </div>
+                )}
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.25)' }}>ke</div>
+                <div
+                  style={{ fontSize: 8, fontFamily: 'monospace', color: 'rgba(255,255,255,0.3)' }}>
+                  {fmtAddr(RECIPIENT_ADDRESS)}
+                </div>
+              </div>
+            </div>
+
+            {/* Live stream bar */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div
+                style={{
+                  flex: 1,
+                  height: 3,
+                  borderRadius: 99,
+                  background: 'rgba(255,255,255,0.08)',
+                  overflow: 'hidden',
+                }}>
+                <div
+                  style={{
+                    height: '100%',
+                    borderRadius: 99,
+                    background: `linear-gradient(90deg, ${planColor}, ${planGradient})`,
+                    width: '100%',
+                    opacity: 0.7,
+                    animation: 'pulse 2s ease-in-out infinite',
+                  }}
+                />
+              </div>
+              <span
+                style={{
+                  fontSize: 8,
+                  color: activeStream?.paused ? '#f59e0b' : '#6ee7b7',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 2,
+                  flexShrink: 0,
+                }}>
+                {activeStream?.paused ? '⏸ paused' : '● streaming…'}
+              </span>
+            </div>
+
+            {/* Pause / Resume button */}
+            <div style={{ marginTop: 8, display: 'flex', gap: 6, pointerEvents: 'all' }}>
+              {activeStream?.paused ? (
+                <button
+                  onClick={handleResumeClick}
+                  disabled={!!localAction || streamActionPending}
+                  style={{
+                    flex: 1,
+                    padding: '5px 10px',
+                    borderRadius: 7,
+                    border: '1px solid rgba(110,231,183,0.35)',
+                    background:
+                      localAction === 'resume' ? 'rgba(110,231,183,0.2)' : 'rgba(110,231,183,0.1)',
+                    color: '#6ee7b7',
+                    fontSize: 9,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 4,
+                    opacity: !!localAction || streamActionPending ? 0.5 : 1,
+                  }}>
+                  {localAction === 'resume' ? '↻ Resuming…' : '▶ Resume Stream'}
+                </button>
+              ) : (
+                <button
+                  onClick={handlePauseClick}
+                  disabled={!!localAction || streamActionPending}
+                  style={{
+                    flex: 1,
+                    padding: '5px 10px',
+                    borderRadius: 7,
+                    border: '1px solid rgba(245,158,11,0.35)',
+                    background:
+                      localAction === 'pause' ? 'rgba(245,158,11,0.2)' : 'rgba(245,158,11,0.08)',
+                    color: '#f59e0b',
+                    fontSize: 9,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 4,
+                    opacity: !!localAction || streamActionPending ? 0.5 : 1,
+                  }}>
+                  {localAction === 'pause' ? '↻ Pausing…' : '⏸ Pause Stream'}
+                </button>
+              )}
+            </div>
+            {localError && (
+              <div
+                style={{
+                  marginTop: 4,
+                  fontSize: 8,
+                  color: '#f87171',
+                  wordBreak: 'break-all',
+                  padding: '4px 6px',
+                  borderRadius: 5,
+                  background: 'rgba(248,113,113,0.1)',
+                  pointerEvents: 'all',
+                }}>
+                ⚠ {localError}
+              </div>
+            )}
+          </div>
+
+          {/* Plan threshold check */}
+          <div
+            style={{
+              margin: '0 12px 10px',
+              padding: '6px 10px',
+              borderRadius: 8,
+              background: planBg,
+              border: `1px solid ${planBorder}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}>
+            <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)' }}>
+              {PLAN_META[currentPlan].label} threshold
+            </span>
+            <span
+              style={{ fontSize: 9, fontWeight: 700, color: planColor, fontFamily: 'monospace' }}>
+              ≥ ${PLAN_MIN_DEPOSIT[currentPlan === 'pro' ? 'pro' : 'basic']}/bln
+            </span>
+            {usdPerMonth != null && (
+              <span
+                style={{ fontSize: 9, fontWeight: 700, color: '#6ee7b7', fontFamily: 'monospace' }}>
+                ↑ {fmtUsd(usdPerMonth)}/bln ✓
+              </span>
+            )}
+          </div>
+        </>
+      ) : (
+        /* No stream — dev bypass or testnet mode */
+        <div style={{ padding: '12px' }}>
+          <div
+            style={{
+              padding: '10px',
+              borderRadius: 8,
+              background: planBg,
+              border: `1px solid ${planBorder}`,
+              marginBottom: 8,
+            }}>
+            <div style={{ fontSize: 10, fontWeight: 600, color: planColor, marginBottom: 4 }}>
+              {isDev ? '🛡️ Dev Mode — Semua fitur unlock' : '🧪 Testnet bypass aktif'}
+            </div>
+            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', lineHeight: 1.5 }}>
+              Stream check dilewati. Untuk production, buat Sablier stream ke recipient address.
+            </div>
+          </div>
+          <div
+            style={{
+              fontSize: 9,
+              color: 'rgba(255,255,255,0.3)',
+              fontFamily: 'monospace',
+              wordBreak: 'break-all',
+            }}>
+            Recipient: {RECIPIENT_ADDRESS}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

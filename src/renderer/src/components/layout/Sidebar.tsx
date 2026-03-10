@@ -48,10 +48,11 @@ import {
   Zap,
 } from 'lucide-react';
 
-import { useState } from 'react'
+import { useState } from 'react';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { LicenseBadge, LicenseModal } from '../LicenseUI';
 import { UpdateChecker } from '../UpdateChecker';
+import { DiscordLoginButton } from '@/integrations/discord/components/DiscordLoginButton';
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   server: Server,
@@ -403,7 +404,7 @@ export default function Sidebar({
             </div>
           </div>
 
-          <div className="flex items-center gap-1 flex-shrink-0">
+          <div className="flex items-center flex-shrink-0 gap-1">
             <ThemeToggle size="sm" />
             <Tooltip>
               <TooltipTrigger asChild>
@@ -501,8 +502,11 @@ export default function Sidebar({
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <button
-                            onClick={(e) => { e.stopPropagation(); onRefreshAbis(); }}
-                            className="absolute right-1 opacity-0 group-hover/nav:opacity-100 w-5 h-5 flex items-center justify-center rounded hover:bg-accent text-muted-foreground/40 hover:text-orange-400 transition-all">
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onRefreshAbis();
+                            }}
+                            className="absolute flex items-center justify-center w-5 h-5 transition-all rounded opacity-0 right-1 group-hover/nav:opacity-100 hover:bg-accent text-muted-foreground/40 hover:text-orange-400">
                             <RefreshCw className="w-3 h-3" />
                           </button>
                         </TooltipTrigger>
@@ -569,6 +573,7 @@ export default function Sidebar({
         <LicenseBadge onClick={() => setShowLicenseModal(true)} />
         <UpdateChecker compact />
       </div>
+      <DiscordLoginButton />
       {showLicenseModal && <LicenseModal onClose={() => setShowLicenseModal(false)} />}
     </aside>
   );
