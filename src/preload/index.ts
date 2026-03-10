@@ -92,14 +92,18 @@ const api = {
     return () => ipcRenderer.removeListener('abis-changed', fn);
   },
 
+  // ── Wallet Connect ────────────────────────────────────────────────────────
+  connectWallet: (): Promise<{ address: string; chainId: number; } | null> =>
+    ipcRenderer.invoke('wallet-connect-popup'),
+
   // ── License ──────────────────────────────────────────────────────────────
-  validateLicense: (key: string): Promise<{ valid: boolean; email?: string | null; expiresAt?: string | null; error?: string }> =>
+  validateLicense: (key: string): Promise<{ valid: boolean; email?: string | null; expiresAt?: string | null; error?: string; }> =>
     ipcRenderer.invoke('validate-license', key),
 
   // ── Auto updater ─────────────────────────────────────────────────────────
-  checkForUpdate:  (): Promise<boolean> => ipcRenderer.invoke('check-for-update'),
-  downloadUpdate:  (): Promise<boolean> => ipcRenderer.invoke('download-update'),
-  installUpdate:   (): Promise<boolean> => ipcRenderer.invoke('install-update'),
+  checkForUpdate: (): Promise<boolean> => ipcRenderer.invoke('check-for-update'),
+  downloadUpdate: (): Promise<boolean> => ipcRenderer.invoke('download-update'),
+  installUpdate: (): Promise<boolean> => ipcRenderer.invoke('install-update'),
   onUpdateStatus: (cb: (event: {
     type: 'checking' | 'available' | 'not-available' | 'download-progress' | 'downloaded' | 'error';
     version?: string;

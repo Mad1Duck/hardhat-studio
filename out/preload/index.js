@@ -81,6 +81,8 @@ const api = {
     electron.ipcRenderer.on("abis-changed", fn);
     return () => electron.ipcRenderer.removeListener("abis-changed", fn);
   },
+  // ── Wallet Connect ────────────────────────────────────────────────────────
+  connectWallet: () => electron.ipcRenderer.invoke("wallet-connect-popup"),
   // ── License ──────────────────────────────────────────────────────────────
   validateLicense: (key) => electron.ipcRenderer.invoke("validate-license", key),
   // ── Auto updater ─────────────────────────────────────────────────────────

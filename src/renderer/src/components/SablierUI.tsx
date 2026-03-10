@@ -290,10 +290,6 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'status' | 'plans'>('status');
 
-  const [manualAddr, setManualAddr] = useState('0x7cF3B03E2210BDB17CF83d65ee9f714Af175D827');
-  const [manualChain, setManualChain] = useState<number>(IS_TESTNET_MODE ? 11155111 : 137);
-  const [addrError, setAddrError] = useState('');
-
   const isConnected = !!walletAddress;
   const hasPaidPlan = status === 'basic' || status === 'pro';
 
@@ -303,13 +299,21 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
     setRefreshing(false);
   };
 
-  const handleManualConnect = async () => {
-    if (!/^0x[0-9a-fA-F]{40}$/.test(manualAddr.trim())) {
-      setAddrError('Masukkan alamat wallet valid (0x...)');
-      return;
+  // Opens the Electron popup window: MetaMask detect → connect, or manual address input
+  const handleWalletConnect = async () => {
+    const api = (window as any).api;
+    if (api?.connectWallet) {
+      const result = await api.connectWallet();
+      if (result?.address) {
+        await connect(result.address, result.chainId);
+      }
+    } else {
+      // Fallback for non-Electron / dev: just use a prompt (won't happen in production)
+      const addr = window.prompt('Enter wallet address (0x...):');
+      if (addr && /^0x[0-9a-fA-F]{40}$/.test(addr.trim())) {
+        await connect(addr.trim(), IS_TESTNET_MODE ? 11155111 : 137);
+      }
     }
-    setAddrError('');
-    await connect(manualAddr.trim(), manualChain);
   };
 
   const openSablier = () => {
@@ -333,20 +337,6 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
       return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     },
   };
-
-  const CHAIN_OPTIONS = [
-    { id: 1, label: 'Ethereum', testnet: false },
-    { id: 137, label: 'Polygon', testnet: false },
-    { id: 42161, label: 'Arbitrum', testnet: false },
-    { id: 56, label: 'BNB Chain', testnet: false },
-    { id: 10, label: 'Optimism', testnet: false },
-    { id: 8453, label: 'Base', testnet: false },
-    { id: 10143, label: 'Monad', testnet: false },
-    { id: 11155111, label: 'Sepolia', testnet: true },
-    { id: 84532, label: 'Base Sepolia', testnet: true },
-    { id: 421614, label: 'Arbitrum Sepolia', testnet: true },
-    { id: 11155420, label: 'Optimism Sepolia', testnet: true },
-  ];
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-md">
@@ -511,16 +501,16 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                     </div>
                   )}
 
-                  {/* Step 1 */}
+                  {/* Step 1 — Wallet Connect */}
                   <StepCard
                     step={1}
                     done={isConnected}
                     dimmed={false}
-                    title={isConnected ? fmt.addr(walletAddress!) : 'Masukkan Alamat Wallet'}
+                    title={isConnected ? fmt.addr(walletAddress!) : 'Connect Wallet'}
                     subtitle={
                       isConnected
                         ? (chainName ?? `Chain ${chainId}`)
-                        : 'MetaMask tidak bisa inject ke Electron — paste alamat manual'
+                        : 'MetaMask atau input address manual'
                     }
                     right={
                       isConnected ? (
@@ -534,51 +524,14 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                   />
 
                   {!isConnected && (
-                    <div className="px-1 space-y-2">
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          placeholder="0x... alamat wallet kamu"
-                          value={manualAddr}
-                          onChange={(e) => {
-                            setManualAddr(e.target.value);
-                            setAddrError('');
-                          }}
-                          className="flex-1 h-8 px-3 text-xs border rounded-lg bg-muted/40 border-border/60 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-violet-500/60"
-                        />
-                        <select
-                          value={manualChain}
-                          onChange={(e) => setManualChain(Number(e.target.value))}
-                          className="h-8 px-2 text-xs border rounded-lg bg-muted/40 border-border/60 text-foreground focus:outline-none focus:border-violet-500/60">
-                          <optgroup label="Mainnet">
-                            {CHAIN_OPTIONS.filter((c) => !c.testnet).map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.label}
-                              </option>
-                            ))}
-                          </optgroup>
-                          <optgroup label="Testnet">
-                            {CHAIN_OPTIONS.filter((c) => c.testnet).map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.label} 🧪
-                              </option>
-                            ))}
-                          </optgroup>
-                        </select>
-                      </div>
-                      {addrError && <p className="text-[10px] text-red-400">{addrError}</p>}
-                      <Button
-                        size="sm"
-                        className="w-full h-7 px-3 text-xs gap-1.5 bg-violet-600 hover:bg-violet-500 text-white border-0"
-                        onClick={handleManualConnect}
-                        disabled={status === 'loading'}>
-                        <Wallet className="w-3 h-3" />
-                        {status === 'loading' ? 'Mengecek…' : 'Verifikasi Wallet'}
-                      </Button>
-                      <p className="text-[10px] text-muted-foreground/50 text-center">
-                        Alamat ini hanya dipakai untuk cek stream — tidak ada signing
-                      </p>
-                    </div>
+                    <Button
+                      size="sm"
+                      className="w-full gap-2 text-xs text-white border-0 shadow-lg h-9 bg-violet-600 hover:bg-violet-500 shadow-violet-500/20"
+                      onClick={handleWalletConnect}
+                      disabled={status === 'loading'}>
+                      <Wallet className="w-3.5 h-3.5" />
+                      {status === 'loading' ? 'Mengecek…' : 'Connect Wallet'}
+                    </Button>
                   )}
 
                   <StepCard
