@@ -92,7 +92,7 @@ const api = {
     return () => ipcRenderer.removeListener('abis-changed', fn);
   },
 
-  // ── Wallet Connect ────────────────────────────────────────────────────────
+  //  Wallet Connect 
   connectWallet: (): Promise<{ address: string; chainId: number; } | null> =>
     ipcRenderer.invoke('wallet-connect-popup'),
 
@@ -127,11 +127,11 @@ const api = {
   getUser: () => ipcRenderer.invoke("get-user"),
   logout: () => ipcRenderer.invoke("logout"),
 
-  // ── License ──────────────────────────────────────────────────────────────
+  //  License 
   validateLicense: (key: string): Promise<{ valid: boolean; email?: string | null; expiresAt?: string | null; error?: string; }> =>
     ipcRenderer.invoke('validate-license', key),
 
-  // ── Auto updater ─────────────────────────────────────────────────────────
+  //  Auto updater 
   checkForUpdate: (): Promise<boolean> => ipcRenderer.invoke('check-for-update'),
   downloadUpdate: (): Promise<boolean> => ipcRenderer.invoke('download-update'),
   installUpdate: (): Promise<boolean> => ipcRenderer.invoke('install-update'),
