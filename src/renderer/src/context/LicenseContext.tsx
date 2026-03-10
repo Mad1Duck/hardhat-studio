@@ -5,13 +5,8 @@
  */
 export {
   useLicense,
-  useSablier,
   LicenseProvider,
-  SablierProvider,
   FEATURE_TIERS,
   RECIPIENT_ADDRESS,
   type Feature,
-  type LicenseStatus,
-  type SubscriptionStatus,
-  type StreamInfo,
 } from './SablierContext';

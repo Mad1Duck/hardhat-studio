@@ -1,82 +1,66 @@
-/**
- * SablierContext — Per-plan stream-based subscription gating
- *
- * SISTEM PLAN (3 tier):
- *   FREE   → tidak perlu stream, fitur dasar
- *   BASIC  → stream ≥ $9.99/bulan  → Tools & Analysis
- *   PRO    → stream ≥ $29.99/bulan → semua fitur
- *
- * ENV VARS (.env):
- *   VITE_DEV_UNLOCK=true          → unlock semua fitur tanpa stream (dev only)
- *   VITE_NODE_ENV=development     → aktifkan testnet mode (deposit threshold dikecilkan, default chain = Sepolia)
- *   VITE_NODE_ENV=production      → mainnet only (default)
- *   VITE_RECIPIENT_ADDRESS=0x...  → treasury wallet tujuan stream
- *
- * Di production build (electron-builder / vite build), set:
- *   VITE_NODE_ENV=production
- * Di development (npm run dev), set:
- *   VITE_NODE_ENV=development
- *
- * TESTNET MODE (VITE_NODE_ENV=development):
- *   - Default chain: Sepolia (chainId 11155111)
- *   - Deposit threshold dikecilkan: basic=$0.01, pro=$0.02 (buat testing)
- *   - Durasi minimum: 1 hari (bukan 25 hari)
- *   - Semua chain testnet tersedia di dropdown
- */
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+export const RECIPIENT_ADDRESS = import.meta.env.VITE_RECIPIENT_ADDRESS;
 
-// ─── Plan Tiers ───────────────────────────────────────────────────────────────
-
-export type Plan = 'free' | 'basic' | 'pro';
-
-/**
- * IS_TESTNET_MODE — true jika VITE_NODE_ENV=development
- *
- * Digunakan untuk:
- *   - Mengecilkan deposit threshold (biar bisa test dengan token testnet murah)
- *   - Memperpendek durasi minimum stream
- *   - Default chain ke Sepolia di UI
- */
 export const IS_TESTNET_MODE = import.meta.env.VITE_NODE_ENV === 'development';
 
-/**
- * Minimum deposit per plan (USDC, 6 desimal).
- *
- * Production: nilai normal ($9.99 / $29.99)
- * Development/testnet: nilai kecil ($0.01 / $0.02) supaya mudah di-test
- *
- * Formula: jumlah_usd * 10^6 = units USDC
- */
-export const PLAN_MIN_DEPOSIT: Record<Exclude<Plan, 'free'>, bigint> = IS_TESTNET_MODE
-  ? {
-      basic: BigInt('10000'), // $0.01 USDC — testnet
-      pro: BigInt('20000'), // $0.02 USDC — testnet
-    }
-  : {
-      basic: BigInt('9990000'), // $9.99 USDC — production
-      pro: BigInt('29990000'), // $29.99 USDC — production
-    };
+export const PLAN_MIN_DEPOSIT = IS_TESTNET_MODE
+  ? { basic: 0.01, pro: 0.02 }
+  : { basic: 9.99, pro: 29.99 };
 
-/**
- * Duration minimum stream dalam detik.
- *
- * Production: 25 hari (toleransi gas timing, sedikit di bawah 1 bulan)
- * Development/testnet: 1 hari (biar mudah di-test)
+/* 
+   SABLIER FLOW SUBGRAPH ENDPOINTS (TheGraph Studio)
+   
+   Stream #FL3-11155111-163 → prefix FL3 = SablierFlow v1.1
+   This is the FLOW protocol (open-ended payment streams),
+   NOT Lockup (time-locked vesting streams).
+   
+   Flow subgraph naming pattern: "sablier-flow-{chain}"
+   Query ID: 112500 (same Sablier org account on TheGraph Studio)
+   
+   No API key needed (testing URLs), rate-limited 3000 queries/day.
+   https://docs.sablier.com/api/flow/indexers#the-graph
  */
-export const PLAN_MIN_DURATION_SEC = IS_TESTNET_MODE
-  ? 1 * 24 * 3600 // 1 hari — testnet
-  : 25 * 24 * 3600; // 25 hari — production
 
-// ─── Feature → Plan Mapping ───────────────────────────────────────────────────
+const THEGRAPH_ENDPOINTS: Record<number, string> = {
+  1: 'https://api.studio.thegraph.com/query/112500/sablier-flow-ethereum/version/latest',
+  137: 'https://api.studio.thegraph.com/query/112500/sablier-flow-polygon/version/latest',
+  42161: 'https://api.studio.thegraph.com/query/112500/sablier-flow-arbitrum/version/latest',
+  56: 'https://api.studio.thegraph.com/query/112500/sablier-flow-bsc/version/latest',
+  10: 'https://api.studio.thegraph.com/query/112500/sablier-flow-optimism/version/latest',
+  8453: 'https://api.studio.thegraph.com/query/112500/sablier-flow-base/version/latest',
+  11155111: 'https://api.studio.thegraph.com/query/112500/sablier-flow-sepolia/version/latest',
+  84532: 'https://api.studio.thegraph.com/query/112500/sablier-flow-base-sepolia/version/latest',
+  421614:
+    'https://api.studio.thegraph.com/query/112500/sablier-flow-arbitrum-sepolia/version/latest',
+  11155420:
+    'https://api.studio.thegraph.com/query/112500/sablier-flow-optimism-sepolia/version/latest',
+};
+
+/* 
+   TYPES
+ */
+
+export type Plan = 'free' | 'basic' | 'pro';
+export type Status = 'loading' | 'free' | 'basic' | 'pro' | 'dev' | 'no_wallet';
 
 export type Feature =
   | 'accounts'
-  | 'snapshots'
+  | 'environment'
+  | 'git'
+  | 'docs'
+  | 'notes'
+  | 'debug'
+  | 'erc_standards'
   | 'block_explorer'
   | 'security'
   | 'gas_profiler'
   | 'opcode_viewer'
+  | 'snapshots'
+  | 'erc20_reader'
+  | 'nft_viewer'
+  | 'verify_contract'
+  | 'audit_notes'
   | 'contract_graph'
   | 'tx_graph'
   | 'analytics'
@@ -84,28 +68,10 @@ export type Feature =
   | 'lp_simulator'
   | 'scenario_builder'
   | 'frontend_helper'
-  | 'verify_contract'
   | 'abi_compat'
-  | 'event_schema'
-  | 'environment'
-  | 'git'
-  | 'docs'
-  | 'erc_standards'
-  | 'audit_notes'
-  | 'notes'
-  | 'debug'
-  | 'erc20_reader'
-  | 'nft_viewer';
+  | 'event_schema';
 
-/**
- * PETA FITUR → PLAN
- *
- * free  = semua user bisa akses
- * basic = butuh stream ≥ $9.99/bulan
- * pro   = butuh stream ≥ $29.99/bulan
- */
 export const FEATURE_TIERS: Record<Feature, Plan> = {
-  // ── FREE (tidak butuh stream) ──────────────────────────────────────────────
   accounts: 'free',
   environment: 'free',
   git: 'free',
@@ -114,8 +80,6 @@ export const FEATURE_TIERS: Record<Feature, Plan> = {
   debug: 'free',
   erc_standards: 'free',
   block_explorer: 'free',
-
-  // ── BASIC ($9.99/bulan) ── Tools & Analysis ────────────────────────────────
   security: 'basic',
   gas_profiler: 'basic',
   opcode_viewer: 'basic',
@@ -124,8 +88,6 @@ export const FEATURE_TIERS: Record<Feature, Plan> = {
   nft_viewer: 'basic',
   verify_contract: 'basic',
   audit_notes: 'basic',
-
-  // ── PRO ($29.99/bulan) ── Advanced & DeFi ─────────────────────────────────
   contract_graph: 'pro',
   tx_graph: 'pro',
   analytics: 'pro',
@@ -137,58 +99,83 @@ export const FEATURE_TIERS: Record<Feature, Plan> = {
   event_schema: 'pro',
 };
 
-/** Label & deskripsi per plan untuk UI */
-export const PLAN_META: Record<
-  Plan,
-  { label: string; price: string; color: string; desc: string }
-> = {
-  free: { label: 'Free', price: '$0', color: 'text-muted-foreground', desc: 'Tools dasar Hardhat' },
-  basic: { label: 'Basic', price: '$9.99', color: 'text-blue-400', desc: 'Tools & Analysis' },
-  pro: { label: 'Pro', price: '$29.99', color: 'text-violet-400', desc: 'All Features + DeFi' },
+export const PLAN_META = {
+  free: { label: 'Free', price: '0', desc: 'Basic tools', color: 'text-muted-foreground' },
+  basic: { label: 'Basic', price: '9.99', desc: 'Tools & Analysis', color: 'text-blue-400' },
+  pro: { label: 'Pro', price: '29.99', desc: 'Advanced + DeFi', color: 'text-violet-400' },
 };
 
-// ─── Sablier Config ───────────────────────────────────────────────────────────
-
-/**
- * Treasury address kamu — user harus stream KE address ini.
- * GANTI INI sebelum deploy ke production!
- */
-export const RECIPIENT_ADDRESS = import.meta.env.VITE_RECIPIENT_ADDRESS;
-
-/**
- * Sablier Lockup Subgraph endpoints — updated 2024
- *
- * The Graph hosted service (api.thegraph.com/subgraphs/name/...) was SHUT DOWN.
- * Sablier migrated to:
- *   - The Graph Studio: per-chain, FREE testing URL (3000 req/day, no key needed)
- *   - Envio HyperIndex: single multi-chain endpoint, FREE, no API key needed
- *
- * Strategy: try Studio per-chain first, fallback to Envio for unsupported chains.
- * Source: https://docs.sablier.com/api/lockup/indexers
+/* 
+   LOG TYPES
  */
 
-// The Graph Studio — per-chain, free, no key needed (rate-limited 3000/day)
-const STUDIO_URLS: Record<number, string> = {
-  // ── Mainnets ──────────────────────────────────────────────────────────────
-  1: 'https://api.studio.thegraph.com/query/57079/sablier/version/latest',
-  137: 'https://api.studio.thegraph.com/query/57079/sablier-matic/version/latest',
-  42161: 'https://api.studio.thegraph.com/query/57079/sablier-arbitrum/version/latest',
-  56: 'https://api.studio.thegraph.com/query/57079/sablier-bsc/version/latest',
-  10: 'https://api.studio.thegraph.com/query/57079/sablier-optimism/version/latest',
-  8453: 'https://api.studio.thegraph.com/query/57079/sablier-base/version/latest',
-  // ── Testnets ──────────────────────────────────────────────────────────────
-  11155111: 'https://api.studio.thegraph.com/query/57079/sablier-sepolia/version/latest',
-  84532: 'https://api.studio.thegraph.com/query/57079/sablier-base-sepolia/version/latest',
-  421614: 'https://api.studio.thegraph.com/query/57079/sablier-arbitrum-sepolia/version/latest',
-  11155420: 'https://api.studio.thegraph.com/query/57079/sablier-optimism-sepolia/version/latest',
+export type LogLevel = 'info' | 'success' | 'warn' | 'error' | 'debug';
+
+export type LogEntry = {
+  id: string;
+  ts: number;
+  level: LogLevel;
+  msg: string;
+  data?: unknown;
 };
 
-// Envio Lockup HyperIndex — multi-chain, no key needed, covers Monad + all chains
-// See: https://envio.dev/app/sablier-labs/lockup-envio
-export const ENVIO_URL = 'https://indexer.hyperindex.xyz/c1c8e48/v1/graphql';
+/* 
+   STREAM TYPE
+ */
 
-export const CHAIN_NAMES: Record<number, string> = {
-  // ── Mainnets ──────────────────────────────────────────────────────────────
+export type ActiveStream = {
+  sender: string;
+  tokenSymbol: string;
+  tokenAddress: string;
+  tokenDecimals: number;
+  chainId: number;
+  chainName: string;
+  // Flow uses ratePerSecond (18-decimal BigInt string) instead of deposit/endTime
+  ratePerSecond: string;
+  // Balance fields
+  balance: string; // current token balance in stream
+  totalStreamed: string; // total ever streamed out
+  // Timestamps
+  startTime: number;
+  lastAdjustmentTime: number;
+  // Status
+  paused: boolean;
+  depositAmount: string; // alias for balance (display compat)
+  withdrawnAmount: string; // alias for totalStreamed (display compat)
+  endTime: number; // synthesized: now + (balance / ratePerSecond)
+};
+
+/* 
+   CONTEXT TYPE
+ */
+
+type LicenseContextType = {
+  status: Status;
+  walletAddress?: string;
+  chainId?: number;
+  chainName?: string;
+  currentPlan: Plan;
+  activeStream?: ActiveStream;
+  error?: string;
+  isDev: boolean;
+  logs: LogEntry[];
+
+  connect: (addr: string, chainId: number) => Promise<void>;
+  disconnect: () => void;
+  refresh: () => Promise<void>;
+  clearLogs: () => void;
+
+  can: (feature: Feature) => boolean;
+  planFor: (feature: Feature) => Plan;
+};
+
+const LicenseContext = createContext<LicenseContextType | null>(null);
+
+/* 
+   CHAIN NAME MAP
+ */
+
+const CHAIN_NAMES: Record<number, string> = {
   1: 'Ethereum',
   137: 'Polygon',
   42161: 'Arbitrum',
@@ -196,564 +183,496 @@ export const CHAIN_NAMES: Record<number, string> = {
   10: 'Optimism',
   8453: 'Base',
   10143: 'Monad',
-  // ── Testnets ──────────────────────────────────────────────────────────────
   11155111: 'Sepolia',
   84532: 'Base Sepolia',
   421614: 'Arbitrum Sepolia',
   11155420: 'Optimism Sepolia',
 };
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+/* 
+   TOKEN PRICE
+ */
 
-export type SubscriptionStatus =
-  | 'loading' // sedang check
-  | 'no_wallet' // belum connect wallet
-  | 'no_stream' // wallet connect, tidak ada stream aktif
-  | 'basic' // stream aktif, plan Basic
-  | 'pro' // stream aktif, plan Pro
-  | 'dev'; // VITE_DEV_UNLOCK=true
+async function fetchTokenPrice(symbol: string): Promise<number | null> {
+  try {
+    const coinId =
+      symbol.toUpperCase() === 'USDC'
+        ? 'usd-coin'
+        : symbol.toUpperCase() === 'USDT'
+          ? 'tether'
+          : symbol.toUpperCase() === 'DAI'
+            ? 'dai'
+            : symbol.toUpperCase() === 'WETH'
+              ? 'ethereum'
+              : symbol.toLowerCase();
 
-export interface StreamInfo {
-  id: string;
-  sender: string;
-  tokenSymbol: string;
-  tokenAddress: string;
-  depositAmount: string;
-  withdrawnAmount: string;
-  startTime: number;
-  endTime: number;
-  chainId: number;
-  chainName: string;
-  detectedPlan: Plan;
+    const r = await fetch(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`,
+      { signal: AbortSignal.timeout(8000) },
+    );
+    const j = await r.json();
+    return j[coinId]?.usd ?? null;
+  } catch {
+    return null;
+  }
 }
 
-interface SablierState {
-  status: SubscriptionStatus;
-  currentPlan: Plan;
-  walletAddress: string | null;
-  chainId: number | null;
-  chainName: string | null;
-  activeStream: StreamInfo | null;
-  isDev: boolean;
-  error: string | null;
+/* 
+   PLAN DETECTION
+ */
+
+function detectPlan(monthlyUSD: number): Plan {
+  if (monthlyUSD >= PLAN_MIN_DEPOSIT.pro) return 'pro';
+  if (monthlyUSD >= PLAN_MIN_DEPOSIT.basic) return 'basic';
+  return 'free';
 }
 
-interface SablierContextValue extends SablierState {
-  can: (feature: Feature) => boolean;
-  planFor: (feature: Feature) => Plan;
-  connect: (manualAddress?: string, manualChainId?: number) => Promise<void>;
-  disconnect: () => void;
-  refresh: () => Promise<void>;
-  checkUpdate: () => void;
-  // backwards compat
-  activate: (key: string) => Promise<{ success: boolean; error?: string }>;
-  deactivate: () => void;
+const INTROSPECT_QUERY = /* graphql */ `
+  query {
+    __type(name: "Stream") {
+      fields {
+        name
+        type { name kind ofType { name kind } }
+      }
+    }
+  }
+`;
+
+const STREAMS_QUERY_THEGRAPH = /* graphql */ `
+  query GetStreams($sender: String!, $recipient: String!) {
+    streams(
+      where: {
+        sender: $sender
+        recipient: $recipient
+        paused: false
+      }
+      orderBy: timestamp
+      orderDirection: desc
+      first: 10
+    ) {
+      id
+      alias
+      sender
+      recipient
+      paused
+      ratePerSecond
+      withdrawnAmount
+      startTime
+      timestamp
+      asset {
+        id
+        symbol
+        decimals
+      }
+    }
+  }
+`;
+
+type QueryResult = {
+  stream: ActiveStream | null;
+  logs: LogEntry[];
+};
+
+async function queryStreams(
+  wallet: string,
+  chainId: number,
+  chainName: string,
+): Promise<QueryResult> {
+  const logs: LogEntry[] = [];
+  const log = (level: LogLevel, msg: string, data?: unknown): void => {
+    logs.push({ id: `${Date.now()}-${Math.random()}`, ts: Date.now(), level, msg, data });
+  };
+
+  const senderLower = wallet.toLowerCase();
+  const recipientLower = RECIPIENT_ADDRESS.toLowerCase();
+
+  log('info', `Starting Flow stream query`, { wallet: senderLower, chainId, chainName });
+  log('info', `Recipient: ${RECIPIENT_ADDRESS}`);
+
+  /*  TheGraph  */
+  const graphEndpoint = THEGRAPH_ENDPOINTS[chainId];
+
+  if (!graphEndpoint) {
+    log('error', `No TheGraph endpoint for chainId ${chainId}`);
+    log('error', `Supported chains: ${Object.keys(THEGRAPH_ENDPOINTS).join(', ')}`);
+    return { stream: null, logs };
+  }
+
+  log('debug', `[TheGraph/Flow] Querying...`, { endpoint: graphEndpoint });
+
+  /*  Step 1: Introspect schema to discover actual fields  */
+  try {
+    const introRes = await fetch(graphEndpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: INTROSPECT_QUERY }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (introRes.ok) {
+      const introJson = await introRes.json();
+      const fields: string[] = (introJson.data?.__type?.fields ?? []).map((f: any) => f.name);
+      log('info', `[Schema] Stream fields: ${fields.join(', ')}`, { total: fields.length });
+      console.log('[Sablier] Stream schema fields:', fields);
+    }
+  } catch {
+    log('debug', `[Schema] Introspection skipped`);
+  }
+
+  /*  Step 2: Main query  */
+
+  try {
+    const res = await fetch(graphEndpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: STREAMS_QUERY_THEGRAPH,
+        variables: { sender: senderLower, recipient: recipientLower },
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!res.ok) {
+      log('error', `[TheGraph] HTTP ${res.status} ${res.statusText}`);
+      return { stream: null, logs };
+    }
+
+    const json = await res.json();
+    log('debug', `[TheGraph] Raw response`, {
+      hasData: !!json.data,
+      hasErrors: !!json.errors,
+      streamCount: json.data?.streams?.length ?? 'N/A',
+      errors: json.errors ?? null,
+    });
+    console.log('[Sablier] raw json:', JSON.stringify(json, null, 2));
+
+    if (json.errors) {
+      log('error', `[TheGraph] GraphQL errors`, json.errors);
+      const msg = json.errors[0]?.message ?? 'Unknown error';
+      log('error', `First error: ${msg}`);
+      return { stream: null, logs };
+    }
+
+    const streams: any[] = json.data?.streams ?? [];
+    log('info', `[TheGraph] Received ${streams.length} active Flow stream(s)`);
+
+    for (const s of streams) {
+      log('debug', `Stream ${s.alias ?? s.id}`, {
+        paused: s.paused,
+        ratePerSecond: s.ratePerSecond,
+        balance: s.balance,
+        token: s.token?.symbol,
+        snapshotTime: s.snapshotTime,
+      });
+    }
+
+    if (streams.length === 0) {
+      log('warn', `No active (unpaused) Flow streams found for this wallet → recipient`);
+      log('warn', `Hint: Check RECIPIENT_ADDRESS and that stream is not paused`);
+      return { stream: null, logs };
+    }
+
+    const s = streams[0];
+    const decimals: number = Number(s.asset?.decimals ?? 18);
+    const rateRaw = BigInt(s.ratePerSecond ?? '0');
+    const withdrawnRaw = BigInt(s.withdrawnAmount ?? '0');
+
+    // Synthesize a balance estimate: we don't have it yet until schema confirmed
+    // Will be refined once introspection shows the actual balance field name
+    const nowSec = Math.floor(Date.now() / 1000);
+    // fallback endTime: 30 days from now (schema field TBD)
+    const synthesizedEndTime = nowSec + 86400 * 30;
+
+    log('success', `Flow stream found: ${s.alias ?? s.id} (${s.asset?.symbol ?? '?'})`);
+    log('debug', `ratePerSecond raw: ${s.ratePerSecond}`, {
+      decimals,
+      withdrawn: s.withdrawnAmount,
+      asset: s.asset,
+    });
+
+    return {
+      stream: {
+        sender: s.sender,
+        tokenAddress: s.asset?.id ?? '',
+        tokenSymbol: s.asset?.symbol ?? 'UNKNOWN',
+        tokenDecimals: decimals,
+        chainId,
+        chainName,
+        ratePerSecond: String(rateRaw),
+        balance: '0',
+        totalStreamed: String(withdrawnRaw),
+        startTime: Number(s.startTime),
+        lastAdjustmentTime: Number(s.startTime),
+        paused: Boolean(s.paused),
+        depositAmount: '0',
+        withdrawnAmount: String(withdrawnRaw),
+        endTime: synthesizedEndTime,
+      },
+      logs,
+    };
+  } catch (err: any) {
+    log('error', `[TheGraph] Fetch failed: ${err.message ?? String(err)}`);
+    return { stream: null, logs };
+  }
 }
 
-const SablierContext = createContext<SablierContextValue | null>(null);
+/* 
+   PROVIDER
+ */
 
-export function useLicense() {
-  const ctx = useContext(SablierContext);
-  if (!ctx) throw new Error('useLicense must be inside SablierProvider / LicenseProvider');
-  return ctx;
-}
-export { useLicense as useSablier };
+export function LicenseProvider({ children }: { children: ReactNode }) {
+  const [walletAddress, setWallet] = useState<string>();
+  const [chainId, setChainId] = useState<number>();
+  const [chainName, setChainName] = useState<string>();
+  const [status, setStatus] = useState<Status>('no_wallet');
+  const [currentPlan, setPlan] = useState<Plan>('free');
+  const [activeStream, setStream] = useState<ActiveStream>();
+  const [error, setError] = useState<string>();
+  const [logs, setLogs] = useState<LogEntry[]>([]);
 
-// ─── Provider ─────────────────────────────────────────────────────────────────
-
-export function SablierProvider({ children }: { children: ReactNode }) {
   const isDev = import.meta.env.VITE_DEV_UNLOCK === 'true';
 
-  const [state, setState] = useState<SablierState>({
-    status: isDev ? 'dev' : 'loading',
-    currentPlan: isDev ? 'pro' : 'free',
-    walletAddress: null,
-    chainId: null,
-    chainName: null,
-    activeStream: null,
-    isDev,
-    error: null,
-  });
+  function appendLogs(newLogs: LogEntry[]) {
+    setLogs((prev) => [...prev, ...newLogs]);
+  }
 
-  /**
-   * connect(address?, chainId?) — dua mode:
-   *
-   * Mode A — tanpa argumen:
-   *   Electron tidak punya window.ethereum (MetaMask hanya inject ke browser).
-   *   Coba window.ethereum dulu (jika ada — dev via Vite browser mode),
-   *   lalu fallback ke status 'no_wallet' supaya UI bisa tampilkan input manual.
-   *
-   * Mode B — dengan argumen (dari manual address input di UI):
-   *   Langsung set address + chainId dan query subgraph.
-   */
-  const connect = useCallback(
-    async (manualAddress?: string, manualChainId?: number) => {
-      if (isDev) return;
+  function clearLogs() {
+    setLogs([]);
+  }
 
-      // Mode B — manual address dari input UI
-      if (manualAddress) {
-        const address = manualAddress.trim().toLowerCase();
-        if (!/^0x[0-9a-f]{40}$/.test(address)) {
-          setState((s) => ({
-            ...s,
-            status: 'no_wallet',
-            error: 'Alamat wallet tidak valid (harus 0x + 40 hex).',
-          }));
-          return;
-        }
-        const chainId = manualChainId ?? 137; // default Polygon
-        try {
-          localStorage.setItem('hs_wallet', address);
-        } catch {}
-        setState((s) => ({
-          ...s,
-          status: 'loading',
-          error: null,
-          walletAddress: address,
-          chainId,
-          chainName: CHAIN_NAMES[chainId] ?? `Chain ${chainId}`,
-        }));
-        await _checkStreams(address, chainId, setState);
-        return;
-      }
+  /*  refresh  */
+  async function refresh() {
+    if (!walletAddress || !chainId) return;
 
-      // Mode A — coba window.ethereum (hanya ada di browser dev, bukan Electron prod)
-      const eth = (window as any).ethereum;
-      if (!eth) {
-        // Di Electron, window.ethereum tidak ada — tampilkan UI input manual
-        setState((s) => ({
-          ...s,
-          status: 'no_wallet',
-          error: null, // bukan error, UI akan tampilkan input manual
-        }));
-        return;
-      }
-      try {
-        setState((s) => ({ ...s, status: 'loading', error: null }));
-        const accounts: string[] = await eth.request({ method: 'eth_requestAccounts' });
-        const chainHex: string = await eth.request({ method: 'eth_chainId' });
-        const address = accounts[0]?.toLowerCase() ?? null;
-        const chainId = parseInt(chainHex, 16);
-        if (!address) {
-          setState((s) => ({ ...s, status: 'no_wallet' }));
-          return;
-        }
-        try {
-          localStorage.setItem('hs_wallet', address);
-        } catch {}
-        setState((s) => ({
-          ...s,
-          walletAddress: address,
-          chainId,
-          chainName: CHAIN_NAMES[chainId] ?? `Chain ${chainId}`,
-        }));
-        await _checkStreams(address, chainId, setState);
-      } catch (e: any) {
-        setState((s) => ({
-          ...s,
-          status: 'no_wallet',
-          error: e?.code === 4001 ? 'Ditolak user.' : 'Gagal connect.',
-        }));
-      }
-    },
-    [isDev],
-  );
+    const resolvedChainName = chainName ?? CHAIN_NAMES[chainId] ?? `Chain ${chainId}`;
 
-  const disconnect = useCallback(() => {
-    try {
-      localStorage.removeItem('hs_wallet');
-    } catch {}
-    setState((s) => ({
-      ...s,
-      status: 'no_wallet',
-      currentPlan: 'free',
-      walletAddress: null,
-      chainId: null,
-      chainName: null,
-      activeStream: null,
-      error: null,
-    }));
-  }, []);
+    setStatus('loading');
+    setError(undefined);
 
-  const refresh = useCallback(async () => {
-    if (isDev || !state.walletAddress || !state.chainId) return;
-    setState((s) => ({ ...s, status: 'loading', error: null }));
-    await _checkStreams(state.walletAddress, state.chainId, setState);
-  }, [isDev, state.walletAddress, state.chainId]);
+    const startLog: LogEntry = {
+      id: `${Date.now()}-start`,
+      ts: Date.now(),
+      level: 'info',
+      msg: `Refresh triggered — ${resolvedChainName} (${chainId})`,
+    };
+    appendLogs([startLog]);
 
-  /**
-   * can(feature) — cek apakah user boleh akses feature ini
-   * Logic:
-   *   dev    → semua boleh
-   *   pro    → semua boleh
-   *   basic  → hanya free + basic
-   *   free   → hanya free
-   */
-  const can = useCallback(
-    (feature: Feature): boolean => {
-      if (state.isDev || state.status === 'dev') return true;
-      const required = FEATURE_TIERS[feature];
-      if (required === 'free') return true;
-      if (required === 'basic') return state.currentPlan === 'basic' || state.currentPlan === 'pro';
-      if (required === 'pro') return state.currentPlan === 'pro';
-      return false;
-    },
-    [state],
-  );
+    const { stream, logs: queryLogs } = await queryStreams(
+      walletAddress,
+      chainId,
+      resolvedChainName,
+    );
 
-  const planFor = useCallback((feature: Feature): Plan => FEATURE_TIERS[feature], []);
+    appendLogs(queryLogs);
 
-  const checkUpdate = useCallback(() => {
-    window.api?.checkForUpdate?.();
-  }, []);
-  const activate = useCallback(
-    async (_key: string) => ({ success: false, error: 'Use Sablier stream to activate.' }),
-    [],
-  );
-  const deactivate = useCallback(() => {
-    disconnect();
-  }, [disconnect]);
-
-  // Auto-connect on load
-  useEffect(() => {
-    if (isDev) return;
-    const eth = (window as any).ethereum;
-    if (!eth) {
-      setState((s) => ({ ...s, status: 'no_wallet' }));
+    if (!stream) {
+      const noStreamLog: LogEntry = {
+        id: `${Date.now()}-result`,
+        ts: Date.now(),
+        level: 'warn',
+        msg: 'No active stream detected → plan: Free',
+      };
+      appendLogs([noStreamLog]);
+      setStatus('free');
+      setPlan('free');
+      setStream(undefined);
       return;
     }
 
-    const cached = localStorage.getItem('hs_wallet');
-    if (cached) {
-      eth
-        .request({ method: 'eth_accounts' })
-        .then(async (accounts: string[]) => {
-          if (accounts.map((a: string) => a.toLowerCase()).includes(cached)) {
-            const chainHex = await eth.request({ method: 'eth_chainId' });
-            const chainId = parseInt(chainHex, 16);
-            setState((s) => ({
-              ...s,
-              walletAddress: cached,
-              chainId,
-              chainName: CHAIN_NAMES[chainId] ?? `Chain ${chainId}`,
-            }));
-            await _checkStreams(cached, chainId, setState);
-          } else {
-            setState((s) => ({ ...s, status: 'no_wallet' }));
-          }
-        })
-        .catch(() => setState((s) => ({ ...s, status: 'no_wallet' })));
-    } else {
-      setState((s) => ({ ...s, status: 'no_wallet' }));
-    }
+    /* Price lookup */
+    const priceLog: LogEntry = {
+      id: `${Date.now()}-price`,
+      ts: Date.now(),
+      level: 'info',
+      msg: `Fetching ${stream.tokenSymbol} price from CoinGecko...`,
+    };
+    appendLogs([priceLog]);
 
-    const onAccountsChanged = async (accounts: string[]) => {
-      if (!accounts.length) {
-        disconnect();
+    const price = await fetchTokenPrice(stream.tokenSymbol);
+
+    if (!price) {
+      /* For stablecoins (USDC/USDT/DAI) assume $1 */
+      const isStable = ['USDC', 'USDT', 'DAI', 'FRAX', 'LUSD'].includes(
+        stream.tokenSymbol.toUpperCase(),
+      );
+
+      if (!isStable) {
+        const errLog: LogEntry = {
+          id: `${Date.now()}-price-err`,
+          ts: Date.now(),
+          level: 'error',
+          msg: `Price lookup failed for ${stream.tokenSymbol}`,
+        };
+        appendLogs([errLog]);
+        setError(`Price lookup failed for ${stream.tokenSymbol}`);
+        setStatus('free');
         return;
       }
-      const addr = accounts[0].toLowerCase();
-      try {
-        localStorage.setItem('hs_wallet', addr);
-      } catch {}
-      setState((s) => ({ ...s, walletAddress: addr, status: 'loading' }));
-      const chainHex = await eth.request({ method: 'eth_chainId' });
-      await _checkStreams(addr, parseInt(chainHex, 16), setState);
-    };
-    const onChainChanged = async (chainHex: string) => {
-      const chainId = parseInt(chainHex, 16);
-      setState((s) => ({
-        ...s,
-        chainId,
-        chainName: CHAIN_NAMES[chainId] ?? `Chain ${chainId}`,
-        status: 'loading',
-      }));
-      const addr = localStorage.getItem('hs_wallet');
-      if (addr) await _checkStreams(addr, chainId, setState);
-    };
 
-    eth.on?.('accountsChanged', onAccountsChanged);
-    eth.on?.('chainChanged', onChainChanged);
-    return () => {
-      eth.removeListener?.('accountsChanged', onAccountsChanged);
-      eth.removeListener?.('chainChanged', onChainChanged);
-    };
-  }, [isDev, disconnect]);
+      appendLogs([
+        {
+          id: `${Date.now()}-stablecoin`,
+          ts: Date.now(),
+          level: 'info',
+          msg: `${stream.tokenSymbol} assumed = $1.00 (stablecoin)`,
+        },
+      ]);
+    }
+
+    const usdPrice = price ?? 1;
+
+    // Flow: ratePerSecond is 18-decimal WAD (like ETH wei)
+    // ratePerSecond / 1e18 = tokens/sec → × 86400 × 30 = tokens/month
+    const decimals = stream.tokenDecimals;
+    const ratePerSecondTokens = Number(stream.ratePerSecond) / 10 ** decimals;
+    const ratePerMonth = ratePerSecondTokens * 86400 * 30;
+    const monthlyUSD = ratePerMonth * usdPrice;
+
+    const plan = detectPlan(monthlyUSD);
+
+    appendLogs([
+      {
+        id: `${Date.now()}-calc`,
+        ts: Date.now(),
+        level: 'debug',
+        msg: `Flow stream math`,
+        data: {
+          rate_per_sec_raw: stream.ratePerSecond,
+          decimals,
+          rate_per_sec_tokens: ratePerSecondTokens.toFixed(10),
+          rate_per_month_tokens: ratePerMonth.toFixed(6),
+          price_usd: usdPrice,
+          monthly_usd: monthlyUSD.toFixed(4),
+        },
+      },
+      {
+        id: `${Date.now()}-plan`,
+        ts: Date.now(),
+        level: 'success',
+        msg: `Plan detected: ${plan.toUpperCase()} ($${monthlyUSD.toFixed(2)}/mo)`,
+        data: {
+          basic_threshold: PLAN_MIN_DEPOSIT.basic,
+          pro_threshold: PLAN_MIN_DEPOSIT.pro,
+        },
+      },
+    ]);
+
+    setStream(stream);
+    setPlan(plan);
+    setStatus(plan);
+  }
+
+  /*  connect  */
+  async function connect(addr: string, cid: number) {
+    const name = CHAIN_NAMES[cid] ?? `Chain ${cid}`;
+    setWallet(addr);
+    setChainId(cid);
+    setChainName(name);
+    clearLogs();
+    appendLogs([
+      {
+        id: `${Date.now()}-connect`,
+        ts: Date.now(),
+        level: 'info',
+        msg: `Wallet connected: ${addr.slice(0, 6)}…${addr.slice(-4)} on ${name}`,
+      },
+    ]);
+    // auto-refresh after connect
+    setStatus('loading');
+    setError(undefined);
+
+    const { stream, logs: queryLogs } = await queryStreams(addr, cid, name);
+    appendLogs(queryLogs);
+
+    if (!stream) {
+      appendLogs([
+        {
+          id: `${Date.now()}-no-stream`,
+          ts: Date.now(),
+          level: 'warn',
+          msg: 'No active stream on connect → plan: Free',
+        },
+      ]);
+      setStatus('free');
+      setPlan('free');
+      return;
+    }
+
+    const price = await fetchTokenPrice(stream.tokenSymbol);
+    const usdPrice = price ?? 1;
+    const ratePerSecondTokens = Number(stream.ratePerSecond) / 10 ** stream.tokenDecimals;
+    const monthlyUSD = ratePerSecondTokens * 86400 * 30 * usdPrice;
+    const plan = detectPlan(monthlyUSD);
+
+    appendLogs([
+      {
+        id: `${Date.now()}-plan-connect`,
+        ts: Date.now(),
+        level: 'success',
+        msg: `Plan on connect: ${plan.toUpperCase()} ($${monthlyUSD.toFixed(2)}/mo)`,
+      },
+    ]);
+
+    setStream(stream);
+    setPlan(plan);
+    setStatus(plan);
+  }
+
+  /*  disconnect  */
+  function disconnect() {
+    setWallet(undefined);
+    setChainId(undefined);
+    setChainName(undefined);
+    setStatus('no_wallet');
+    setPlan('free');
+    setStream(undefined);
+    setError(undefined);
+    clearLogs();
+  }
+
+  /*  permission helpers  */
+  function can(feature: Feature) {
+    const required = FEATURE_TIERS[feature];
+    if (isDev) return true;
+    if (required === 'free') return true;
+    if (required === 'basic' && (currentPlan === 'basic' || currentPlan === 'pro')) return true;
+    if (required === 'pro' && currentPlan === 'pro') return true;
+    return false;
+  }
+
+  function planFor(feature: Feature) {
+    return FEATURE_TIERS[feature];
+  }
 
   return (
-    <SablierContext.Provider
+    <LicenseContext.Provider
       value={{
-        ...state,
-        can,
-        planFor,
+        status,
+        walletAddress,
+        chainId,
+        chainName,
+        activeStream,
+        currentPlan,
+        error,
+        isDev,
+        logs,
         connect,
         disconnect,
         refresh,
-        checkUpdate,
-        activate,
-        deactivate,
+        clearLogs,
+        can,
+        planFor,
       }}>
       {children}
-    </SablierContext.Provider>
+    </LicenseContext.Provider>
   );
 }
 
-export { SablierProvider as LicenseProvider };
-export type { SubscriptionStatus as LicenseStatus };
-
-// ─── Stream Check Logic ───────────────────────────────────────────────────────
-
-type SetState = React.Dispatch<React.SetStateAction<SablierState>>;
-
-async function _checkStreams(address: string, chainId: number, setState: SetState) {
-  try {
-    const stream = await queryBestStream(address, chainId);
-    if (!stream) {
-      setState((s) => ({
-        ...s,
-        status: 'no_stream' as SubscriptionStatus,
-        currentPlan: 'free',
-        activeStream: null,
-        error: null,
-      }));
-      return;
-    }
-    const plan = stream.detectedPlan;
-    const status: SubscriptionStatus = plan === 'pro' ? 'pro' : 'basic';
-    setState((s) => ({
-      ...s,
-      status,
-      currentPlan: plan,
-      activeStream: stream,
-      error: null,
-    }));
-  } catch (e: any) {
-    setState((s) => ({
-      ...s,
-      status: 'no_stream' as SubscriptionStatus,
-      currentPlan: 'free',
-      activeStream: null,
-      error: 'Failed to check streams: ' + (e?.message ?? ''),
-    }));
-  }
-}
-
-/**
- * Query semua stream aktif dari user → pilih yang terbaik (depositAmount terbesar)
- * Primary: The Graph Studio (per-chain, confirmed URLs, no key needed)
- * Fallback: Envio HyperIndex (multi-chain, covers Monad & chains not in Studio)
- *
- * NOTE: Envio uses different GraphQL syntax from The Graph:
- *   - `Stream(where: {chainId: {_eq: "137"}})` instead of `streams(where: {...})`
- *   - `limit` instead of `first`
- *   - asset_id, asset: { symbol, decimals } nested differently
+/* 
+   HOOK
  */
-/**
- * queryBestStream — cek Lockup DAN Flow streams dari user
- *
- * Sablier punya dua protokol berbeda:
- *   - Lockup (LL/LD/LT/LK): stream dengan endTime tetap, pakai `depositAmount`
- *   - Flow (FL): stream open-ended tanpa endTime, pakai `ratePerSecond` + `balance`
- *
- * User di screenshot pakai FL3 (SablierFlow) — harus support keduanya.
- *
- * Plan detection:
- *   Lockup → normalize depositAmount ke USD 6-dec, bandingkan dengan PLAN_MIN_DEPOSIT
- *   Flow   → hitung monthly rate dari ratePerSecond, bandingkan dengan PLAN_MIN_DEPOSIT
- */
-async function queryBestStream(sender: string, chainId: number): Promise<StreamInfo | null> {
-  const studioUrl = STUDIO_URLS[chainId];
 
-  // Query Lockup dan Flow secara paralel untuk kecepatan
-  const [lockupResult, flowResult] = await Promise.allSettled([
-    studioUrl ? queryLockupStudio(sender, chainId, studioUrl) : Promise.resolve(null),
-    studioUrl ? queryFlowStudio(sender, chainId, studioUrl) : Promise.resolve(null),
-  ]);
-
-  const lockup = lockupResult.status === 'fulfilled' ? lockupResult.value : null;
-  const flow = flowResult.status === 'fulfilled' ? flowResult.value : null;
-
-  // Pilih yang plan-nya lebih tinggi
-  const PLAN_RANK: Record<Plan, number> = { free: 0, basic: 1, pro: 2 };
-  if (lockup && flow) {
-    return PLAN_RANK[lockup.detectedPlan] >= PLAN_RANK[flow.detectedPlan] ? lockup : flow;
-  }
-  return lockup ?? flow ?? null;
-}
-
-// ─── Lockup Stream Query ───────────────────────────────────────────────────────
-// Entity: streams — punya endTime tetap, depositAmount total, withdrawn, dll.
-
-async function queryLockupStudio(
-  sender: string,
-  chainId: number,
-  url: string,
-): Promise<StreamInfo | null> {
-  const nowSec = Math.floor(Date.now() / 1000);
-  const recipient = RECIPIENT_ADDRESS.toLowerCase();
-
-  const query = `{
-    streams(
-      where: {
-        sender: "${sender.toLowerCase()}"
-        recipient: "${recipient}"
-        canceled: false
-        endTime_gt: "${nowSec}"
-      }
-      orderBy: depositAmount
-      orderDirection: desc
-      first: 5
-    ) {
-      id
-      sender
-      endTime
-      startTime
-      depositAmount
-      withdrawnAmount
-      asset { id symbol decimals }
-    }
-  }`;
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query }),
-  });
-  if (!res.ok) return null;
-
-  const json = await res.json();
-  const raw: any[] = json?.data?.streams ?? [];
-
-  for (const s of raw) {
-    const decimals = Number(s.asset?.decimals ?? 6);
-    const deposit = BigInt(s.depositAmount ?? '0');
-    const duration = Number(s.endTime) - Number(s.startTime);
-
-    // Normalize ke 6-decimal USDC untuk perbandingan
-    const depositNorm = normalizeToUsdc(deposit, decimals);
-
-    const detectedPlan = detectPlan(depositNorm, duration);
-    if (detectedPlan === 'free') continue;
-
-    return {
-      id: s.id,
-      sender: s.sender,
-      tokenSymbol: s.asset?.symbol ?? 'TOKEN',
-      tokenAddress: s.asset?.id ?? '',
-      depositAmount: s.depositAmount,
-      withdrawnAmount: s.withdrawnAmount,
-      startTime: Number(s.startTime),
-      endTime: Number(s.endTime),
-      chainId,
-      chainName: CHAIN_NAMES[chainId] ?? `Chain ${chainId}`,
-      detectedPlan,
-    };
-  }
-  return null;
-}
-
-// ─── Flow Stream Query ─────────────────────────────────────────────────────────
-// Entity: flows — open-ended stream tanpa endTime tetap.
-// Field kunci: ratePerSecond (token/detik yang di-stream), balance (saldo tersisa)
-//
-// Plan detection untuk Flow:
-//   monthly_rate_usdc = ratePerSecond * 30 * 24 * 3600  (normalize ke 6-dec)
-//   Kalau monthly_rate >= PLAN_MIN_DEPOSIT → plan valid
-//   Durasi "effective" = balance / ratePerSecond (berapa detik lagi bisa jalan)
-
-async function queryFlowStudio(
-  sender: string,
-  chainId: number,
-  url: string,
-): Promise<StreamInfo | null> {
-  const nowSec = Math.floor(Date.now() / 1000);
-  const recipient = RECIPIENT_ADDRESS.toLowerCase();
-
-  // Flow entity di subgraph sablier-matic/sablier-arbitrum/dll
-  const query = `{
-    flows(
-      where: {
-        sender: "${sender.toLowerCase()}"
-        recipient: "${recipient}"
-        paused: false
-        voided: false
-      }
-      orderBy: ratePerSecond
-      orderDirection: desc
-      first: 5
-    ) {
-      id
-      sender
-      ratePerSecond
-      balance
-      depositedAmount
-      withdrawnAmount
-      snapshotTime
-      asset { id symbol decimals }
-    }
-  }`;
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query }),
-  });
-  if (!res.ok) return null;
-
-  const json = await res.json();
-  if (json?.errors) return null; // endpoint tidak support flows — skip
-  const raw: any[] = json?.data?.flows ?? [];
-
-  for (const s of raw) {
-    const decimals = Number(s.asset?.decimals ?? 18);
-    const rps = BigInt(s.ratePerSecond ?? '0'); // token/detik dalam raw units
-    const balance = BigInt(s.balance ?? '0'); // saldo tersisa di stream
-
-    // Effective duration — berapa detik lagi stream bisa jalan dengan saldo sekarang
-    const effectiveDuration = rps > 0n ? Number(balance / rps) : 0;
-
-    // Monthly rate dalam raw token units
-    const SECS_PER_MONTH = 30 * 24 * 3600;
-    const monthlyRaw = rps * BigInt(SECS_PER_MONTH);
-
-    // Normalize ke 6-decimal USDC untuk perbandingan dengan PLAN_MIN_DEPOSIT
-    const monthlyNorm = normalizeToUsdc(monthlyRaw, decimals);
-
-    const detectedPlan = detectPlan(monthlyNorm, effectiveDuration);
-    if (detectedPlan === 'free') continue;
-
-    // Untuk display, hitung "virtual" endTime dari balance yang tersisa
-    const virtualEndTime = nowSec + effectiveDuration;
-
-    return {
-      id: s.id,
-      sender: s.sender,
-      tokenSymbol: s.asset?.symbol ?? 'TOKEN',
-      tokenAddress: s.asset?.id ?? '',
-      depositAmount: s.depositedAmount ?? s.balance,
-      withdrawnAmount: s.withdrawnAmount ?? '0',
-      startTime: Number(s.snapshotTime ?? nowSec),
-      endTime: virtualEndTime,
-      chainId,
-      chainName: CHAIN_NAMES[chainId] ?? `Chain ${chainId}`,
-      detectedPlan,
-    };
-  }
-  return null;
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/** Normalize token amount ke 6-decimal USDC units untuk perbandingan plan */
-function normalizeToUsdc(amount: bigint, decimals: number): bigint {
-  if (decimals === 6) return amount;
-  if (decimals > 6) return amount / BigInt(10 ** (decimals - 6));
-  return amount * BigInt(10 ** (6 - decimals));
-}
-
-/** Tentukan plan dari amount (sudah dinormalisasi ke 6-dec) dan durasi (detik) */
-function detectPlan(amountNorm: bigint, durationSec: number): Plan {
-  if (amountNorm >= PLAN_MIN_DEPOSIT.pro && durationSec >= PLAN_MIN_DURATION_SEC) return 'pro';
-  if (amountNorm >= PLAN_MIN_DEPOSIT.basic && durationSec >= PLAN_MIN_DURATION_SEC) return 'basic';
-  return 'free';
+export function useLicense() {
+  const ctx = useContext(LicenseContext);
+  if (!ctx) throw new Error('useLicense must be used inside LicenseProvider');
+  return ctx;
 }

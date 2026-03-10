@@ -7,7 +7,7 @@
  *   BASIC → stream ≥ $9.99/bln → Tools & Analysis
  *   PRO   → stream ≥ $29.99/bln → Semua fitur
  */
-import { useState, ReactNode } from 'react';
+import { useState, ReactNode, useRef, useEffect } from 'react';
 import {
   Wallet,
   CheckCircle,
@@ -24,6 +24,10 @@ import {
   Zap,
   Star,
   Crown,
+  Terminal,
+  ChevronDown,
+  ChevronUp,
+  Trash2,
 } from 'lucide-react';
 import {
   useLicense,
@@ -34,20 +38,159 @@ import {
   Plan,
   PLAN_MIN_DEPOSIT,
   IS_TESTNET_MODE,
+  LogEntry,
+  LogLevel,
 } from '../context/SablierContext';
 import { Button } from './ui/button';
 import { cn } from '../lib/utils';
 
-// ─── Plan Icon helper ─────────────────────────────────────────────────────────
+// Plan Icon helper
 function PlanIcon({ plan, className }: { plan: Plan; className?: string }) {
   if (plan === 'pro') return <Crown className={cn('text-violet-400', className)} />;
   if (plan === 'basic') return <Star className={cn('text-blue-400', className)} />;
   return <Zap className={cn('text-muted-foreground', className)} />;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// Log Level styling
+const LOG_STYLE: Record<LogLevel, { dot: string; text: string; label: string }> = {
+  info: { dot: 'bg-sky-400', text: 'text-sky-300', label: 'INFO' },
+  success: { dot: 'bg-emerald-400', text: 'text-emerald-300', label: 'OK  ' },
+  warn: { dot: 'bg-amber-400', text: 'text-amber-300', label: 'WARN' },
+  error: { dot: 'bg-red-400', text: 'text-red-300', label: 'ERR ' },
+  debug: { dot: 'bg-violet-400', text: 'text-violet-300', label: 'DBG ' },
+};
+
+// DebugLogPanel
+function DebugLogPanel() {
+  const { logs, clearLogs } = useLicense();
+  const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState<LogLevel | 'all'>('all');
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [logs, open]);
+
+  const filtered = filter === 'all' ? logs : logs.filter((l) => l.level === filter);
+  const errorCount = logs.filter((l) => l.level === 'error').length;
+  const warnCount = logs.filter((l) => l.level === 'warn').length;
+
+  const fmtTime = (ts: number) =>
+    new Date(ts).toLocaleTimeString('en-GB', {
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+
+  return (
+    <div className="overflow-hidden border border-border/40 rounded-xl">
+      {/* Toggle header */}
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center w-full gap-2 px-3 py-2 text-left transition-colors bg-muted/20 hover:bg-muted/30">
+        <Terminal className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+        <span className="text-[10px] font-mono font-semibold text-muted-foreground flex-1">
+          Debug Logs
+        </span>
+
+        {/* badges */}
+        <div className="flex items-center gap-1">
+          {logs.length > 0 && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground font-mono">
+              {logs.length}
+            </span>
+          )}
+          {errorCount > 0 && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 font-mono">
+              {errorCount} ERR
+            </span>
+          )}
+          {warnCount > 0 && !errorCount && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-mono">
+              {warnCount} WARN
+            </span>
+          )}
+        </div>
+
+        {open ? (
+          <ChevronUp className="w-3 h-3 text-muted-foreground" />
+        ) : (
+          <ChevronDown className="w-3 h-3 text-muted-foreground" />
+        )}
+      </button>
+
+      {/* Panel body */}
+      {open && (
+        <div className="bg-black/60">
+          {/* Filter bar + clear */}
+          <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border/30 flex-wrap">
+            {(['all', 'info', 'success', 'warn', 'error', 'debug'] as const).map((lvl) => (
+              <button
+                key={lvl}
+                onClick={() => setFilter(lvl)}
+                className={cn(
+                  'text-[9px] font-mono px-1.5 py-0.5 rounded transition-colors',
+                  filter === lvl
+                    ? 'bg-violet-600/60 text-white'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}>
+                {lvl.toUpperCase()}
+              </button>
+            ))}
+            <div className="flex-1" />
+            <button
+              onClick={clearLogs}
+              className="flex items-center gap-1 text-[9px] text-muted-foreground hover:text-red-400 transition-colors">
+              <Trash2 className="w-2.5 h-2.5" />
+              Clear
+            </button>
+          </div>
+
+          {/* Log lines */}
+          <div className="overflow-y-auto max-h-48 font-mono text-[10px] leading-relaxed px-1 py-1">
+            {filtered.length === 0 ? (
+              <p className="text-center py-4 text-muted-foreground/40 text-[10px]">
+                {logs.length === 0 ? 'No logs yet — click Refresh' : 'No logs match filter'}
+              </p>
+            ) : (
+              filtered.map((entry) => {
+                const s = LOG_STYLE[entry.level];
+                return (
+                  <div key={entry.id} className="flex gap-1.5 py-0.5 px-1 hover:bg-white/5 rounded">
+                    {/* dot */}
+                    <span className={cn('mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0', s.dot)} />
+                    {/* time */}
+                    <span className="text-muted-foreground/40 flex-shrink-0 w-[52px]">
+                      {fmtTime(entry.ts)}
+                    </span>
+                    {/* level */}
+                    <span className={cn('flex-shrink-0 w-8', s.text)}>{s.label}</span>
+                    {/* message */}
+                    <span className="flex-1 break-all text-foreground/80">{entry.msg}</span>
+                    {/* data peek */}
+                    {entry.data !== undefined && (
+                      <span
+                        className="text-muted-foreground/40 truncate max-w-[100px] hidden sm:block"
+                        title={JSON.stringify(entry.data, null, 2)}>
+                        {JSON.stringify(entry.data).slice(0, 40)}…
+                      </span>
+                    )}
+                  </div>
+                );
+              })
+            )}
+            <div ref={bottomRef} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // LicenseGate — wrapper panel, tampilkan upgrade jika plan tidak cukup
-// ─────────────────────────────────────────────────────────────────────────────
 export function LicenseGate({
   feature,
   children,
@@ -72,7 +215,6 @@ export function LicenseGate({
           'flex flex-col items-center justify-center gap-5 text-center select-none',
           compact ? 'p-6' : 'flex-1 p-12',
         )}>
-        {/* Animated icon */}
         <div className="relative flex items-center justify-center w-20 h-20">
           <div
             className={cn(
@@ -130,9 +272,7 @@ export function LicenseGate({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // LicenseModal — wallet connect + plan selection + stream flow
-// ─────────────────────────────────────────────────────────────────────────────
 export function LicenseModal({ onClose }: { onClose: () => void }) {
   const {
     status,
@@ -150,9 +290,7 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'status' | 'plans'>('status');
 
-  // Manual address input state (for Electron — no window.ethereum)
-  const [manualAddr, setManualAddr] = useState('');
-  // Default chain: Sepolia di testnet mode, Polygon di production
+  const [manualAddr, setManualAddr] = useState('0x7cF3B03E2210BDB17CF83d65ee9f714Af175D827');
   const [manualChain, setManualChain] = useState<number>(IS_TESTNET_MODE ? 11155111 : 137);
   const [addrError, setAddrError] = useState('');
 
@@ -175,7 +313,6 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
   };
 
   const openSablier = () => {
-    // Electron — harus pakai window.api.openExternal, bukan window.open
     if ((window as any).api?.openExternal) {
       (window as any).api.openExternal('https://app.sablier.com');
     } else {
@@ -198,7 +335,6 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
   };
 
   const CHAIN_OPTIONS = [
-    // Mainnets
     { id: 1, label: 'Ethereum', testnet: false },
     { id: 137, label: 'Polygon', testnet: false },
     { id: 42161, label: 'Arbitrum', testnet: false },
@@ -206,7 +342,6 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
     { id: 10, label: 'Optimism', testnet: false },
     { id: 8453, label: 'Base', testnet: false },
     { id: 10143, label: 'Monad', testnet: false },
-    // Testnets
     { id: 11155111, label: 'Sepolia', testnet: true },
     { id: 84532, label: 'Base Sepolia', testnet: true },
     { id: 421614, label: 'Arbitrum Sepolia', testnet: true },
@@ -219,16 +354,14 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
         {/* Top accent */}
         <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-violet-500/60 to-transparent" />
 
-        {/* ── Header ── */}
+        {/* Header */}
         <div className="flex items-center flex-shrink-0 gap-3 px-5 py-4 border-b border-border/50">
           <div
             className={cn(
               'flex items-center justify-center w-8 h-8 rounded-lg border',
-              hasPaidPlan
+              hasPaidPlan || isDev
                 ? 'bg-emerald-500/15 border-emerald-500/25'
-                : isDev
-                  ? 'bg-emerald-500/15 border-emerald-500/25'
-                  : 'bg-violet-500/15 border-violet-500/25',
+                : 'bg-violet-500/15 border-violet-500/25',
             )}>
             {hasPaidPlan || isDev ? (
               <CheckCircle className="w-4 h-4 text-emerald-400" />
@@ -253,7 +386,7 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        {/* ── Tab bar ── */}
+        {/* Tab bar */}
         <div className="flex flex-shrink-0 border-b border-border/40">
           {(['status', 'plans'] as const).map((tab) => (
             <button
@@ -270,9 +403,9 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
           ))}
         </div>
 
-        {/* ── Tab Content ── */}
+        {/* Tab Content */}
         <div className="flex-1 overflow-y-auto">
-          {/* ──────── TAB: STATUS ──────── */}
+          {/* TAB: STATUS */}
           {activeTab === 'status' && (
             <div className="p-5 space-y-4">
               {/* Dev mode */}
@@ -295,8 +428,7 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                   <div>
                     <p className="font-semibold">Testnet Mode — VITE_NODE_ENV=development</p>
                     <p className="text-amber-400/60 mt-0.5">
-                      Threshold dikecilkan ($0.01/$0.02) · Durasi min 1 hari · Default chain:
-                      Sepolia
+                      Threshold dikecilkan ($0.01/$0.02) · Default chain: Sepolia
                     </p>
                   </div>
                 </div>
@@ -355,13 +487,17 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                     <StreamProgressBar stream={activeStream} plan={currentPlan} />
                   </div>
 
-                  <button
-                    onClick={handleRefresh}
-                    disabled={refreshing}
-                    className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors mx-auto">
-                    <RefreshCw className={cn('w-3 h-3', refreshing && 'animate-spin')} />
-                    {refreshing ? 'Mengecek…' : 'Refresh status stream'}
-                  </button>
+                  {/* Refresh + Log Panel */}
+                  <div className="space-y-2">
+                    <button
+                      onClick={handleRefresh}
+                      disabled={refreshing}
+                      className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors mx-auto">
+                      <RefreshCw className={cn('w-3 h-3', refreshing && 'animate-spin')} />
+                      {refreshing ? 'Mengecek…' : 'Refresh status stream'}
+                    </button>
+                    <DebugLogPanel />
+                  </div>
                 </div>
               )}
 
@@ -375,7 +511,7 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                     </div>
                   )}
 
-                  {/* Step 1 — manual wallet address (Electron: no window.ethereum) */}
+                  {/* Step 1 */}
                   <StepCard
                     step={1}
                     done={isConnected}
@@ -397,7 +533,6 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                     }
                   />
 
-                  {/* Manual address input — shown when not connected */}
                   {!isConnected && (
                     <div className="px-1 space-y-2">
                       <div className="flex gap-2">
@@ -482,6 +617,9 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                     }
                   />
 
+                  {/* Debug Log Panel — always visible once connected */}
+                  {isConnected && <DebugLogPanel />}
+
                   {/* Recipient */}
                   <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-muted/20 border border-border/40">
                     <ArrowRight className="flex-shrink-0 w-3 h-3 text-muted-foreground" />
@@ -529,15 +667,14 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
-          {/* ──────── TAB: PLANS / FITUR ──────── */}
+          {/* TAB: PLANS / FITUR */}
           {activeTab === 'plans' && (
             <div className="p-5 space-y-4">
               {/* Plan cards */}
               <div className="grid grid-cols-3 gap-2">
                 {(['free', 'basic', 'pro'] as Plan[]).map((plan) => {
                   const m = PLAN_META[plan];
-                  const isActive =
-                    currentPlan === plan || (plan === 'free' && currentPlan === 'free');
+                  const isActive = currentPlan === plan;
                   return (
                     <div
                       key={plan}
@@ -653,13 +790,7 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
 
               <button
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold transition-colors"
-                onClick={() => {
-                  if ((window as any).api?.openExternal) {
-                    (window as any).api.openExternal('https://app.sablier.com');
-                  } else {
-                    window.open('https://app.sablier.com', '_blank');
-                  }
-                }}>
+                onClick={openSablier}>
                 <ExternalLink className="w-3.5 h-3.5" /> Buat Stream di app.sablier.com
               </button>
             </div>
@@ -670,9 +801,7 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // LicenseBadge — sidebar footer
-// ─────────────────────────────────────────────────────────────────────────────
 export function LicenseBadge({ onClick }: { onClick?: () => void }) {
   const { status, currentPlan, isDev } = useLicense();
   const [showModal, setShowModal] = useState(false);
@@ -733,7 +862,7 @@ export function LicenseBadge({ onClick }: { onClick?: () => void }) {
   );
 }
 
-// ─── Helper Components ────────────────────────────────────────────────────────
+// Helper Components
 function StepCard({
   step,
   done,
@@ -814,7 +943,16 @@ function StreamProgressBar({
   );
 }
 
-// ─── Feature groups untuk tab Plans ──────────────────────────────────────────
+// Helper for Plans tab
+function openSablier() {
+  if ((window as any).api?.openExternal) {
+    (window as any).api.openExternal('https://app.sablier.com');
+  } else {
+    window.open('https://app.sablier.com', '_blank');
+  }
+}
+
+// Feature groups untuk tab Plans
 const FEATURE_GROUPS: Array<{ label: string; items: Array<{ feature: Feature; label: string }> }> =
   [
     {
