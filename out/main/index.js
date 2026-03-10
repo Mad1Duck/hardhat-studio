@@ -6,6 +6,7 @@ const fs = require("fs");
 const axios = require("axios");
 const keytar = require("keytar");
 const dotenv = require("dotenv");
+const log = require("electron-log");
 const SERVICE = "hardhat-studio";
 async function setStorage(key, value) {
   await keytar.setPassword(SERVICE, key, JSON.stringify(value));
@@ -43,50 +44,31 @@ async function checkUserRoles({
 }
 const isDev = process.env.NODE_ENV === "development" || !!process.env["ELECTRON_RENDERER_URL"];
 dotenv.config();
-let autoUpdater = null;
 if (!isDev) {
-  try {
-    const updater = require("electron-updater");
-    autoUpdater = updater.autoUpdater;
-    autoUpdater.autoDownload = false;
-    autoUpdater.autoInstallOnAppQuit = true;
-  } catch {
-  }
+  const { autoUpdater: autoUpdater2 } = require("electron-updater");
+  autoUpdater2.logger = log;
+  autoUpdater2.logger.transports.file.level = "info";
+  autoUpdater2.autoDownload = false;
+  autoUpdater2.autoInstallOnAppQuit = true;
+  autoUpdater2.allowPrerelease = false;
+  autoUpdater2.allowDowngrade = false;
 }
-function setupAutoUpdater(win) {
-  if (!autoUpdater) return;
-  const send = (payload) => win.webContents.send("update-status", payload);
-  autoUpdater.on("checking-for-update", () => send({ type: "checking" }));
-  autoUpdater.on("update-not-available", () => send({ type: "not-available" }));
-  autoUpdater.on("update-available", (info) => send({ type: "available", version: info.version, releaseNotes: info.releaseNotes }));
-  autoUpdater.on("download-progress", (p) => send({ type: "download-progress", percent: p.percent }));
-  autoUpdater.on("update-downloaded", (info) => send({ type: "downloaded", version: info.version }));
-  autoUpdater.on("error", (e) => send({ type: "error", message: e.message }));
-  setTimeout(() => autoUpdater.checkForUpdates().catch(() => {
-  }), 3e3);
-}
+electron.ipcMain.handle("force-update", async () => {
+  return false;
+});
+electron.ipcMain.handle("open-download-page", async () => {
+  electron.shell.openExternal(
+    "https://github.com/RaihanArdianata/hardhat-studio/releases"
+  );
+});
 electron.ipcMain.handle("check-for-update", async () => {
-  if (!autoUpdater) return false;
-  try {
-    await autoUpdater.checkForUpdates();
-    return true;
-  } catch {
-    return false;
-  }
+  return false;
 });
 electron.ipcMain.handle("download-update", async () => {
-  if (!autoUpdater) return false;
-  try {
-    await autoUpdater.downloadUpdate();
-    return true;
-  } catch {
-    return false;
-  }
+  return false;
 });
 electron.ipcMain.handle("install-update", async () => {
-  if (!autoUpdater) return false;
-  autoUpdater.quitAndInstall();
-  return true;
+  return false;
 });
 let _wcClient = null;
 let _wcLastResult = null;
@@ -319,7 +301,6 @@ function createWindow() {
   });
   mainWindow.on("ready-to-show", () => {
     mainWindow.show();
-    setupAutoUpdater(mainWindow);
   });
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     electron.shell.openExternal(url);
