@@ -51,216 +51,66 @@ ipcMain.handle('install-update', async () => {
   return true;
 });
 
-// ─── Wallet Connect Popup ────────────────────────────────────────────────────
-// Opens an in-app browser window that detects window.ethereum (MetaMask desktop)
-// or shows WalletConnect QR. Returns { address, chainId } via IPC resolve.
-ipcMain.handle('wallet-connect-popup', async (): Promise<{ address: string; chainId: number; } | null> => {
-  return new Promise((resolve) => {
-    const popup = new BrowserWindow({
-      width: 420,
-      height: 600,
-      resizable: false,
-      modal: true,
-      parent: mainWindow ?? undefined,
-      title: 'Connect Wallet',
-      backgroundColor: '#0f1117',
-      autoHideMenuBar: true,
-      webPreferences: {
-        // We need nodeIntegration false + allow ethereum injection from extensions
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: false,
-        // Allow MetaMask browser extension to inject into this window
-        preload: undefined,
+// ─── WalletConnect v2 — Inline QR (no popup) ─────────────────────────────────
+let wcPendingResolve: ((result: { address: string; chainId: number; } | null) => void) | null = null;
+let _wcClient: any = null;
+let _wcLastResult: { address: string; chainId: number; } | null = null;
+
+function sendWcApproved(result: { address: string; chainId: number; } | null) {
+  if (result) { _wcLastResult = result; console.log('[WC] sendWcApproved →', result); }
+  if (wcPendingResolve) { wcPendingResolve(result); wcPendingResolve = null; }
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('wc-approved', result);
+}
+
+ipcMain.handle('wc-session-approved', async (_, result: { address: string; chainId: number; }) => {
+  sendWcApproved(result);
+});
+
+ipcMain.handle('wc-poll-result', async () => {
+  const r = _wcLastResult; _wcLastResult = null; return r;
+});
+
+ipcMain.handle('wc-get-uri', async (): Promise<{ uri: string; } | { error: string; }> => {
+  const projectId = process.env.VITE_WC_PROJECT_ID || process.env.WC_PROJECT_ID || '3721e5967517bd23fc60c504c8ded53c';
+  if (!projectId) return { error: 'NO_PROJECT_ID' };
+  try {
+    if (!globalThis.crypto || !(globalThis.crypto as any).getRandomValues) {
+      const nodeCrypto = require('node:crypto');
+      (globalThis as any).crypto = nodeCrypto.webcrypto;
+    }
+    const { SignClient } = require('@walletconnect/sign-client');
+    _wcClient = await SignClient.init({
+      projectId,
+      metadata: { name: 'Hardhat Studio', description: 'Professional Hardhat Development Environment', url: 'https://hardhatstudio.dev', icons: ['https://hardhatstudio.dev/icon.png'] },
+    });
+    const { uri, approval } = await _wcClient.connect({
+      requiredNamespaces: {
+        eip155: {
+          methods: ['eth_sendTransaction', 'personal_sign', 'eth_sign', 'eth_accounts', 'eth_chainId'],
+          chains: ['eip155:1', 'eip155:137', 'eip155:42161', 'eip155:56', 'eip155:10', 'eip155:8453', 'eip155:11155111'],
+          events: ['chainChanged', 'accountsChanged'],
+        },
       },
     });
+    if (!uri) return { error: 'NO_URI' };
 
-    // The HTML page — clean manual input + open browser helper
-    const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Connect Wallet</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background: #0f1117; color: #e2e8f0;
-    display: flex; flex-direction: column; align-items: center;
-    padding: 28px 24px; gap: 16px; min-height: 100vh;
-  }
-  .logo { font-size: 28px; margin-bottom: 4px; }
-  h2 { font-size: 16px; font-weight: 600; color: #f8fafc; }
-  .hint { font-size: 11px; color: #64748b; text-align: center; line-height: 1.6; max-width: 300px; }
-  .hint b { color: #94a3b8; }
-
-  .step {
-    width: 100%; max-width: 320px;
-    background: #1e293b; border: 1px solid #334155;
-    border-radius: 12px; padding: 14px 16px;
-    display: flex; flex-direction: column; gap: 8px;
-  }
-  .step-label {
-    font-size: 10px; font-weight: 600; color: #7c3aed;
-    text-transform: uppercase; letter-spacing: 0.08em;
-    display: flex; align-items: center; gap: 6px;
-  }
-  .step-label::before {
-    content: attr(data-n);
-    width: 18px; height: 18px; border-radius: 50%;
-    background: #7c3aed22; border: 1px solid #7c3aed55;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 10px; color: #a78bfa; flex-shrink: 0;
-  }
-
-  .btn {
-    width: 100%; padding: 10px 16px; border-radius: 8px;
-    border: none; cursor: pointer; font-size: 13px; font-weight: 600;
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-    transition: opacity 0.15s, transform 0.1s;
-  }
-  .btn:hover { opacity: 0.88; transform: translateY(-1px); }
-  .btn:active { transform: translateY(0); }
-  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
-  .btn-primary { background: #7c3aed; color: #fff; }
-  .btn-secondary { background: #0f172a; color: #94a3b8; border: 1px solid #334155; }
-  .btn-verify { background: #059669; color: #fff; }
-
-  input {
-    width: 100%; padding: 9px 12px; background: #0f172a;
-    border: 1px solid #334155; border-radius: 8px;
-    color: #e2e8f0; font-size: 11px; font-family: 'Courier New', monospace;
-  }
-  input:focus { outline: none; border-color: #7c3aed; }
-  input::placeholder { color: #475569; }
-
-  select {
-    width: 100%; padding: 9px 12px; background: #0f172a;
-    border: 1px solid #334155; border-radius: 8px; color: #e2e8f0; font-size: 12px;
-  }
-  select:focus { outline: none; border-color: #7c3aed; }
-
-  .status {
-    font-size: 11px; text-align: center; padding: 8px 12px;
-    border-radius: 8px; width: 100%; max-width: 320px; min-height: 36px;
-    display: flex; align-items: center; justify-content: center;
-    background: #1e293b; color: #64748b;
-  }
-  .status.ok { color: #34d399; background: #064e3b22; border: 1px solid #065f4622; }
-  .status.err { color: #f87171; background: #450a0a22; border: 1px solid #7f1d1d22; }
-</style>
-</head>
-<body>
-<div class="logo">🔗</div>
-<h2>Connect Wallet</h2>
-<p class="hint">Verifikasi stream Sablier kamu.<br/>Browser extensions tidak bisa inject ke Electron — gunakan cara di bawah.</p>
-
-<!-- Step 1: Open Sablier to get address -->
-<div class="step">
-  <div class="step-label" data-n="1">Lihat address wallet kamu</div>
-  <p style="font-size:11px;color:#64748b;line-height:1.5">
-    Buka <b>app.sablier.com</b> di browser kamu, connect wallet, lalu copy alamat wallet dari sana.
-  </p>
-  <button class="btn btn-secondary" onclick="openSablier()">
-    🌐 Buka app.sablier.com
-  </button>
-</div>
-
-<!-- Step 2: Paste address -->
-<div class="step">
-  <div class="step-label" data-n="2">Paste alamat wallet & pilih chain</div>
-  <input type="text" id="addrInput" placeholder="0x... paste alamat wallet kamu" 
-    oninput="validateAddr(this.value)" />
-  <select id="chainSelect">
-    <optgroup label="— Mainnet —">
-      <option value="1">Ethereum</option>
-      <option value="137">Polygon</option>
-      <option value="42161">Arbitrum</option>
-      <option value="56">BNB Chain</option>
-      <option value="10">Optimism</option>
-      <option value="8453">Base</option>
-    </optgroup>
-    <optgroup label="— Testnet —">
-      <option value="11155111" selected>Sepolia 🧪</option>
-      <option value="84532">Base Sepolia 🧪</option>
-      <option value="421614">Arbitrum Sepolia 🧪</option>
-      <option value="11155420">Optimism Sepolia 🧪</option>
-    </optgroup>
-  </select>
-  <button class="btn btn-verify" id="btnVerify" onclick="submitManual()" disabled>
-    ✓ Verifikasi & Cek Stream
-  </button>
-</div>
-
-<div class="status" id="status">Paste alamat wallet kamu di atas</div>
-
-<script>
-function openSablier() {
-  // Use Electron shell via window.open → gets intercepted by main setWindowOpenHandler
-  window.open('https://app.sablier.com', '_blank');
-}
-
-function validateAddr(val) {
-  const btn = document.getElementById('btnVerify');
-  const valid = /^0x[0-9a-fA-F]{40}$/.test(val.trim());
-  btn.disabled = !valid;
-  if (val.length > 2 && !valid) {
-    setStatus('Format tidak valid — harus 0x + 40 karakter hex', 'err');
-  } else if (valid) {
-    setStatus('Address valid ✓ — pilih chain lalu klik Verifikasi', 'ok');
-  } else {
-    setStatus('Paste alamat wallet kamu di atas', '');
-  }
-}
-
-function setStatus(msg, type) {
-  const el = document.getElementById('status');
-  el.textContent = msg;
-  el.className = 'status' + (type ? ' ' + type : '');
-}
-
-function submitManual() {
-  const addr = document.getElementById('addrInput').value.trim();
-  const chainId = parseInt(document.getElementById('chainSelect').value);
-
-  if (!/^0x[0-9a-fA-F]{40}$/.test(addr)) {
-    setStatus('Format tidak valid — harus 0x + 40 karakter hex', 'err');
-    return;
-  }
-
-  window.__walletResult = { address: addr, chainId };
-  setStatus('✓ Terhubung! Mengecek stream…', 'ok');
-  setTimeout(() => window.close(), 700);
-}
-</script>
-</body>
-</html>`;
-
-    // Load the HTML as data URL
-    popup.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-
-    let resolved = false;
-
-    // Poll for result every 300ms (window.close triggers 'closed' event)
-    const pollTimer = setInterval(async () => {
+    approval().then((session: any) => {
       try {
-        const result = await popup.webContents.executeJavaScript('window.__walletResult || null');
-        if (result && result.address) {
-          clearInterval(pollTimer);
-          if (!resolved) { resolved = true; resolve(result); }
-          if (!popup.isDestroyed()) popup.close();
-        }
-      } catch {
-        // window already closed
-      }
-    }, 300);
+        const ns = session.namespaces?.eip155 || Object.values(session.namespaces || {})[0] as any;
+        const accounts: string[] = ns?.accounts ?? [];
+        if (!accounts.length) { sendWcApproved(null); return; }
+        let addr: string, chainId: number;
+        if (accounts[0].includes(':')) {
+          const p = accounts[0].split(':'); addr = p[2]; chainId = parseInt(p[1] || '1');
+        } else { addr = accounts[0]; chainId = 1; }
+        sendWcApproved({ address: addr, chainId });
+      } catch { sendWcApproved(null); }
+    }).catch((e: any) => console.error('[WC] approval rejected:', e?.message));
 
-    popup.on('closed', () => {
-      clearInterval(pollTimer);
-      if (!resolved) { resolved = true; resolve(null); }
-    });
-  });
+    return { uri };
+  } catch (err: any) {
+    return { error: err?.message ?? 'INIT_FAILED' };
+  }
 });
 
 // ─── License validation (Lemon Squeezy) ──────────────────────────────────────

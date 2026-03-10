@@ -7,7 +7,7 @@
  *   BASIC → stream ≥ $9.99/bln → Tools & Analysis
  *   PRO   → stream ≥ $29.99/bln → Semua fitur
  */
-import { useState, ReactNode, useRef, useEffect } from 'react';
+import { useState, ReactNode, useRef, useEffect, useCallback } from 'react';
 import {
   Wallet,
   CheckCircle,
@@ -43,6 +43,165 @@ import {
 } from '../context/SablierContext';
 import { Button } from './ui/button';
 import { cn } from '../lib/utils';
+
+// ── Inline WalletConnect QR component ────────────────────────────────────────
+// Loads QRCode.js from CDN once, renders QR directly in the main UI (no popup)
+
+let _qrScriptLoaded = false;
+function loadQrScript(): Promise<void> {
+  if (_qrScriptLoaded || (window as any).QRCode) { _qrScriptLoaded = true; return Promise.resolve(); }
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+    s.onload = () => { _qrScriptLoaded = true; res(); };
+    s.onerror = () => rej(new Error('QRCode CDN load failed'));
+    document.head.appendChild(s);
+  });
+}
+
+function InlineWcQr({
+  uri,
+  loading,
+  error,
+  onManual,
+}: {
+  uri: string | null;
+  loading: boolean;
+  error: string | null;
+  onManual: (addr: string, chainId: number) => Promise<void>;
+}) {
+  const qrRef = useRef<HTMLDivElement>(null);
+  const [addr, setAddr] = useState('');
+  const [chainId, setChainId] = useState(11155111);
+  const [addrOk, setAddrOk] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!uri || !qrRef.current) return;
+    loadQrScript().then(() => {
+      if (!qrRef.current) return;
+      qrRef.current.innerHTML = '';
+      new (window as any).QRCode(qrRef.current, {
+        text: uri,
+        width: 148,
+        height: 148,
+        colorDark: '#000000',
+        colorLight: '#ffffff',
+        correctLevel: (window as any).QRCode.CorrectLevel.M,
+      });
+    }).catch(console.warn);
+  }, [uri]);
+
+  const DL: Record<string, string> = {
+    '🦊 MetaMask': `metamask://wc?uri=${encodeURIComponent(uri ?? '')}`,
+    '🛡️ Trust':    `trust://wc?uri=${encodeURIComponent(uri ?? '')}`,
+    '🔵 Coinbase': `cbwallet://wc?uri=${encodeURIComponent(uri ?? '')}`,
+    '🐰 Rabby':    `rabby://wc?uri=${encodeURIComponent(uri ?? '')}`,
+  };
+
+  return (
+    <div className="rounded-xl border border-border/50 bg-card/60 overflow-hidden">
+      {/* QR section */}
+      <div className="flex gap-3 p-3">
+        {/* QR box */}
+        <div className="flex-shrink-0 w-[162px] h-[162px] rounded-lg bg-white flex items-center justify-center overflow-hidden">
+          {loading && (
+            <div className="flex flex-col items-center gap-2">
+              <div className="w-5 h-5 border-2 border-violet-300 border-t-violet-600 rounded-full animate-spin" />
+              <span className="text-[9px] text-gray-400">Menghubungkan…</span>
+            </div>
+          )}
+          {error && (
+            <div className="flex flex-col items-center gap-1 px-3 text-center">
+              <AlertCircle className="w-5 h-5 text-red-400" />
+              <span className="text-[9px] text-red-400 leading-tight">{error}</span>
+            </div>
+          )}
+          {uri && <div ref={qrRef} />}
+        </div>
+
+        {/* Right side */}
+        <div className="flex-1 flex flex-col gap-2 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full bg-blue-400" />
+            <span className="text-[10px] font-semibold text-blue-300">WalletConnect v2</span>
+          </div>
+          <p className="text-[10px] text-muted-foreground leading-relaxed">
+            Scan QR atau klik wallet untuk deep link ke app mobile.
+          </p>
+          {/* Wallet tiles */}
+          <div className="grid grid-cols-4 gap-1.5">
+            {Object.entries(DL).map(([label, href]) => (
+              <button
+                key={label}
+                disabled={!uri}
+                onClick={() => window.open(href, '_blank')}
+                className="flex flex-col items-center gap-1 py-2 rounded-lg border border-border/50 bg-muted/20 hover:border-violet-500/50 hover:bg-violet-500/10 transition-all text-center disabled:opacity-30 disabled:pointer-events-none">
+                <span className="text-base leading-none">{label.split(' ')[0]}</span>
+                <span className="text-[8px] text-muted-foreground leading-none">{label.split(' ').slice(1).join(' ')}</span>
+              </button>
+            ))}
+          </div>
+          {/* Copy URI */}
+          {uri && (
+            <button
+              onClick={() => { navigator.clipboard.writeText(uri); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded-md border border-border/40 bg-muted/20 hover:border-violet-500/40 transition-all text-left w-full">
+              <code className="flex-1 text-[8px] text-muted-foreground font-mono truncate">{uri.slice(0, 36)}…</code>
+              <span className="text-[8px] text-violet-400 flex-shrink-0">{copied ? '✓' : 'Copy'}</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Manual divider */}
+      <div className="flex items-center gap-2 px-3">
+        <div className="flex-1 h-px bg-border/40" />
+        <span className="text-[9px] text-muted-foreground uppercase tracking-wider">atau input manual</span>
+        <div className="flex-1 h-px bg-border/40" />
+      </div>
+
+      {/* Manual input */}
+      <div className="p-3 pt-2 space-y-2">
+        <input
+          type="text"
+          value={addr}
+          placeholder="0xAbc...def"
+          spellCheck={false}
+          autoComplete="off"
+          onChange={(e) => {
+            setAddr(e.target.value);
+            setAddrOk(/^0x[0-9a-fA-F]{40}$/.test(e.target.value.trim()));
+          }}
+          className="w-full px-3 py-2 text-[10px] font-mono rounded-lg border border-border/50 bg-muted/20 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-violet-500/60"
+        />
+        <div className="flex gap-2">
+          <select
+            value={chainId}
+            onChange={(e) => setChainId(Number(e.target.value))}
+            className="flex-1 px-2 py-1.5 text-[10px] rounded-lg border border-border/50 bg-muted/20 text-foreground focus:outline-none focus:border-violet-500/60">
+            <optgroup label="Mainnet">
+              <option value={1}>Ethereum</option>
+              <option value={137}>Polygon</option>
+              <option value={42161}>Arbitrum</option>
+              <option value={8453}>Base</option>
+            </optgroup>
+            <optgroup label="Testnet">
+              <option value={11155111}>Sepolia 🧪</option>
+              <option value={84532}>Base Sepolia 🧪</option>
+            </optgroup>
+          </select>
+          <button
+            disabled={!addrOk}
+            onClick={() => onManual(addr.trim(), chainId)}
+            className="px-3 py-1.5 text-[10px] font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-30 disabled:pointer-events-none">
+            ✓ Verifikasi
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Plan Icon helper
 function PlanIcon({ plan, className }: { plan: Plan; className?: string }) {
@@ -289,6 +448,10 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
   } = useLicense();
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'status' | 'plans'>('status');
+  const [wcQrUri, setWcQrUri] = useState<string | null>(null);
+  const [wcQrLoading, setWcQrLoading] = useState(false);
+  const [wcQrError, setWcQrError] = useState<string | null>(null);
+  const wcPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const isConnected = !!walletAddress;
   const hasPaidPlan = status === 'basic' || status === 'pro';
@@ -299,22 +462,81 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
     setRefreshing(false);
   };
 
-  // Opens the Electron popup window: MetaMask detect → connect, or manual address input
-  const handleWalletConnect = async () => {
+  // Toggle inline QR — no popup, QR appears directly in UI
+  const handleWalletConnect = useCallback(async () => {
     const api = (window as any).api;
-    if (api?.connectWallet) {
-      const result = await api.connectWallet();
-      if (result?.address) {
-        await connect(result.address, result.chainId);
-      }
-    } else {
-      // Fallback for non-Electron / dev: just use a prompt (won't happen in production)
+
+    // If QR is already showing, collapse it
+    if (wcQrUri || wcQrLoading) {
+      setWcQrUri(null);
+      setWcQrError(null);
+      setWcQrLoading(false);
+      if (wcPollRef.current) clearInterval(wcPollRef.current);
+      return;
+    }
+
+    if (!api?.wcGetUri) {
+      // Dev/non-Electron fallback: prompt
       const addr = window.prompt('Enter wallet address (0x...):');
       if (addr && /^0x[0-9a-fA-F]{40}$/.test(addr.trim())) {
         await connect(addr.trim(), IS_TESTNET_MODE ? 11155111 : 137);
       }
+      return;
     }
-  };
+
+    setWcQrLoading(true);
+    setWcQrUri(null);
+    setWcQrError(null);
+
+    try {
+      const res = await api.wcGetUri();
+      if (!res || res.error) {
+        const msg = res?.error === 'NO_PROJECT_ID'
+          ? 'Set VITE_WC_PROJECT_ID di .env'
+          : `WC error: ${res?.error ?? 'unknown'}`;
+        setWcQrError(msg);
+        setWcQrLoading(false);
+        return;
+      }
+      setWcQrUri(res.uri);
+      setWcQrLoading(false);
+
+      // Poll wc-poll-result every 1s as fallback in case push event was missed
+      // (can happen if listener wasn't ready when wallet approved)
+      if (wcPollRef.current) clearInterval(wcPollRef.current);
+      wcPollRef.current = setInterval(async () => {
+        try {
+          const polled = await api.wcPollResult?.();
+          if (polled?.address) {
+            clearInterval(wcPollRef.current!);
+            wcPollRef.current = null;
+            setWcQrUri(null);
+            setWcQrError(null);
+            await connect(polled.address, polled.chainId);
+          }
+        } catch { /* ignore */ }
+      }, 1000);
+    } catch (e: any) {
+      setWcQrError(e?.message ?? 'Gagal generate QR');
+      setWcQrLoading(false);
+    }
+  }, [wcQrUri, wcQrLoading, connect]);
+
+  // Watch for WC session approval via push event from main process
+  useEffect(() => {
+    const api = (window as any).api;
+    if (!api?.onWcApproved) return;
+    const unsub = api.onWcApproved(async (result: { address: string; chainId: number }) => {
+      if (result?.address) {
+        if (wcPollRef.current) { clearInterval(wcPollRef.current); wcPollRef.current = null; }
+        setWcQrUri(null);
+        setWcQrError(null);
+        setWcQrLoading(false);
+        await connect(result.address, result.chainId);
+      }
+    });
+    return () => unsub?.();
+  }, [connect]);
 
   const openSablier = () => {
     if ((window as any).api?.openExternal) {
@@ -510,7 +732,7 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                     subtitle={
                       isConnected
                         ? (chainName ?? `Chain ${chainId}`)
-                        : 'MetaMask atau input address manual'
+                        : 'WalletConnect QR · MetaMask · Trust · Rabby'
                     }
                     right={
                       isConnected ? (
@@ -524,14 +746,39 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                   />
 
                   {!isConnected && (
-                    <Button
-                      size="sm"
-                      className="w-full gap-2 text-xs text-white border-0 shadow-lg h-9 bg-violet-600 hover:bg-violet-500 shadow-violet-500/20"
-                      onClick={handleWalletConnect}
-                      disabled={status === 'loading'}>
-                      <Wallet className="w-3.5 h-3.5" />
-                      {status === 'loading' ? 'Mengecek…' : 'Connect Wallet'}
-                    </Button>
+                    <>
+                      <Button
+                        size="sm"
+                        className={cn(
+                          'w-full gap-2 text-xs text-white border-0 shadow-lg h-9',
+                          wcQrUri || wcQrLoading
+                            ? 'bg-violet-700 hover:bg-violet-600'
+                            : 'bg-violet-600 hover:bg-violet-500',
+                          'shadow-violet-500/20',
+                        )}
+                        onClick={handleWalletConnect}
+                        disabled={status === 'loading'}>
+                        <Wallet className="w-3.5 h-3.5" />
+                        {status === 'loading'
+                          ? 'Mengecek…'
+                          : wcQrUri || wcQrLoading
+                            ? 'Tutup QR'
+                            : 'Connect Wallet'}
+                      </Button>
+
+                      {(wcQrUri || wcQrLoading || wcQrError) && (
+                        <InlineWcQr
+                          uri={wcQrUri}
+                          loading={wcQrLoading}
+                          error={wcQrError}
+                          onManual={async (addr, chainId) => {
+                            setWcQrUri(null);
+                            setWcQrError(null);
+                            await connect(addr, chainId);
+                          }}
+                        />
+                      )}
+                    </>
                   )}
 
                   <StepCard

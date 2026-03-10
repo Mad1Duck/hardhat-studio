@@ -96,6 +96,24 @@ const api = {
   connectWallet: (): Promise<{ address: string; chainId: number; } | null> =>
     ipcRenderer.invoke('wallet-connect-popup'),
 
+  // WalletConnect v2: get URI for inline QR (called from renderer)
+  wcGetUri: (): Promise<{ uri: string } | { error: string } | null> =>
+    ipcRenderer.invoke('wc-get-uri'),
+
+  // WalletConnect v2: notify main of approved session
+  wcSessionApproved: (result: { address: string; chainId: number }) =>
+    ipcRenderer.invoke('wc-session-approved', result),
+
+  // WalletConnect v2: poll for result (fallback if push event was missed)
+  wcPollResult: (): Promise<{ address: string; chainId: number } | null> =>
+    ipcRenderer.invoke('wc-poll-result'),
+
+  // WalletConnect v2: listen for session approval from main process
+  onWcApproved: (cb: (result: { address: string; chainId: number }) => void) => {
+    ipcRenderer.on('wc-approved', (_event, result) => cb(result));
+    return () => ipcRenderer.removeAllListeners('wc-approved');
+  },
+
   // ── License ──────────────────────────────────────────────────────────────
   validateLicense: (key: string): Promise<{ valid: boolean; email?: string | null; expiresAt?: string | null; error?: string; }> =>
     ipcRenderer.invoke('validate-license', key),

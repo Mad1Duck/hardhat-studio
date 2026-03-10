@@ -83,6 +83,17 @@ const api = {
   },
   // ── Wallet Connect ────────────────────────────────────────────────────────
   connectWallet: () => electron.ipcRenderer.invoke("wallet-connect-popup"),
+  // WalletConnect v2: get URI for inline QR (called from renderer)
+  wcGetUri: () => electron.ipcRenderer.invoke("wc-get-uri"),
+  // WalletConnect v2: notify main of approved session
+  wcSessionApproved: (result) => electron.ipcRenderer.invoke("wc-session-approved", result),
+  // WalletConnect v2: poll for result (fallback if push event was missed)
+  wcPollResult: () => electron.ipcRenderer.invoke("wc-poll-result"),
+  // WalletConnect v2: listen for session approval from main process
+  onWcApproved: (cb) => {
+    electron.ipcRenderer.on("wc-approved", (_event, result) => cb(result));
+    return () => electron.ipcRenderer.removeAllListeners("wc-approved");
+  },
   // ── License ──────────────────────────────────────────────────────────────
   validateLicense: (key) => electron.ipcRenderer.invoke("validate-license", key),
   // ── Auto updater ─────────────────────────────────────────────────────────
