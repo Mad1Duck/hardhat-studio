@@ -5,6 +5,8 @@ export function useDiscordAuth() {
   const [user, setUser] = useState<DiscordUser | null>(null);
   const [loading, setLoading] = useState(true);
 
+  console.log(user, "=====window.api====");
+
   useEffect(() => {
     window.api.getUser().then((u) => {
       setUser(u);

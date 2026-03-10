@@ -123,6 +123,8 @@ const api = {
     ipcRenderer.invoke('wc-send-transaction', params),
 
   discordLogin: () => ipcRenderer.invoke("discord-login"),
+  getUser: () => ipcRenderer.invoke("get-user"),
+  logout: () => ipcRenderer.invoke("logout"),
 
   // ── License ──────────────────────────────────────────────────────────────
   validateLicense: (key: string): Promise<{ valid: boolean; email?: string | null; expiresAt?: string | null; error?: string; }> =>

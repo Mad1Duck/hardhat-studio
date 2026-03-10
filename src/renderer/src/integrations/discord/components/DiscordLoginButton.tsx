@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 
 import { useDiscordAuth } from '../hooks/useDiscordAuth';
+import { SocialIcon } from 'react-social-icons';
 
 export function DiscordLoginButton() {
   const { login, logout, loading, user } = useDiscordAuth();
@@ -21,7 +22,7 @@ export function DiscordLoginButton() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="flex items-center gap-2">
-            <Avatar className="w-7 h-7">
+            <Avatar className="w-4 h-4">
               <AvatarImage src={avatarUrl} />
               <AvatarFallback>{user.username?.slice(0, 2).toUpperCase()}</AvatarFallback>
             </Avatar>
@@ -38,11 +39,9 @@ export function DiscordLoginButton() {
   }
 
   return (
-    <Button
-      onClick={login}
-      disabled={loading}
-      className="bg-[#5865F2] hover:bg-[#4752C4] text-white">
-      {loading ? 'Logging in...' : 'Login with Discord'}
+    <Button onClick={login} className="bg-[#5865F2] hover:bg-[#4752C4] text-white flex gap-2">
+      <SocialIcon url="https://discord.com" />
+      Login with Discord
     </Button>
   );
 }

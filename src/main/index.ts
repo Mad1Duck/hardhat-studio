@@ -203,7 +203,6 @@ ipcMain.handle("discord-login", async () => {
       `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
       `&scope=identify`;
 
-    console.log(authUrl, "=====authUrl=====");
     const authWindow = new BrowserWindow({
       width: 500,
       height: 700,
@@ -216,7 +215,7 @@ ipcMain.handle("discord-login", async () => {
 
     authWindow.loadURL(authUrl);
 
-    authWindow.webContents.on("will-redirect", async (event, newUrl) => {
+    authWindow.webContents.on("will-navigate", async (event, newUrl) => {
       if (!newUrl.startsWith(REDIRECT_URI)) return;
 
       event.preventDefault();
@@ -225,7 +224,6 @@ ipcMain.handle("discord-login", async () => {
       const code = url.searchParams.get("code");
 
       try {
-
         const tokenRes = await axios.post(
           "https://discord.com/api/oauth2/token",
           new URLSearchParams({
@@ -241,6 +239,8 @@ ipcMain.handle("discord-login", async () => {
             },
           }
         );
+
+        console.log(tokenRes.data, "=====tokenRes.data=====");
 
         const accessToken = tokenRes.data.access_token;
 
@@ -259,14 +259,11 @@ ipcMain.handle("discord-login", async () => {
         await setStorage("discord_user", user);
 
         authWindow.close();
-
         resolve(user);
 
       } catch (err) {
-
         authWindow.close();
         reject(err);
-
       }
     });
   });

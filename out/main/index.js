@@ -182,7 +182,6 @@ electron.ipcMain.handle("discord-login", async () => {
     await deleteStorage("discord_access_token");
     await deleteStorage("discord_user");
     const authUrl = `https://discord.com/oauth2/authorize?client_id=${CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=identify`;
-    console.log(authUrl, "=====authUrl=====");
     const authWindow = new electron.BrowserWindow({
       width: 500,
       height: 700,
@@ -193,7 +192,7 @@ electron.ipcMain.handle("discord-login", async () => {
       }
     });
     authWindow.loadURL(authUrl);
-    authWindow.webContents.on("will-redirect", async (event, newUrl) => {
+    authWindow.webContents.on("will-navigate", async (event, newUrl) => {
       if (!newUrl.startsWith(REDIRECT_URI)) return;
       event.preventDefault();
       const url = new URL(newUrl);
@@ -214,6 +213,7 @@ electron.ipcMain.handle("discord-login", async () => {
             }
           }
         );
+        console.log(tokenRes.data, "=====tokenRes.data=====");
         const accessToken = tokenRes.data.access_token;
         const userRes = await axios.get(
           "https://discord.com/api/users/@me",
