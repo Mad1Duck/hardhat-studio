@@ -50,9 +50,9 @@ import {
 
 import { useState } from 'react';
 import { ThemeToggle } from '../ui/ThemeToggle';
-import { LicenseBadge, LicenseModal } from '../LicenseUI';
 import { UpdateChecker } from '../UpdateChecker';
 import { DiscordLoginButton } from '@/integrations/discord/components/DiscordLoginButton';
+import { LicenseBadge, LicenseModal } from '@/integrations/license';
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   server: Server,

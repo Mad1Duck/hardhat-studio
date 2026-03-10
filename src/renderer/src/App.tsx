@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useLicense } from './context/LicenseContext';
 import {
   CommandConfig,
   ContractAbi,
@@ -53,9 +52,9 @@ import EventSchemaAnalyzer from './components/panels/EventSchemaAnalyzer';
 import ABICompatibilityChecker from './components/panels/ABICompatibilityChecker';
 import TransactionGraphPanel from './components/panels/TransactionGraphPanel';
 import ERC20TokenReader from './components/panels/ERC20TokenReader';
-import { LicenseGate } from './components/LicenseUI';
 import { UpdateChecker } from './components/UpdateChecker';
 import { DiscordUser } from './integrations/discord/types/discord.type';
+import { LicenseGate, useLicense } from './integrations/license';
 
 type UpdateStatusEvent = {
   type: 'checking' | 'available' | 'not-available' | 'download-progress' | 'downloaded' | 'error';

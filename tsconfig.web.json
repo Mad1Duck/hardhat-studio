@@ -27,7 +27,6 @@
     ]
   },
   "include": [
-    "src/renderer/src/**/*",
-    "src/database",
+    "src/renderer/src/**/*"
   ]
 }

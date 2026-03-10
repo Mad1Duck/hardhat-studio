@@ -4,7 +4,7 @@ import App from './App';
 import './styles/globals.css';
 import { TooltipProvider } from './components/ui/tooltip';
 import { ThemeProvider } from './context/ThemeContext';
-import { LicenseProvider } from './context/SablierContext';
+import { LicenseProvider } from './integrations/license';
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>

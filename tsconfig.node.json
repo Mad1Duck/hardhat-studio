@@ -17,7 +17,6 @@
     "electron.vite.config.*",
     "src/main/**/*",
     "src/preload/**/*",
-    "src/**/*.ts",
-    "src/renderer/src/integrations/discord/hooks/useDiscordAuth.tsx"
+    "src/database/**/*"
   ]
 }
