@@ -8,6 +8,7 @@
  *   PRO   → stream ≥ $29.99/bln → Semua fitur
  */
 import { useState, ReactNode, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Wallet,
   CheckCircle,
@@ -28,6 +29,11 @@ import {
   ChevronDown,
   ChevronUp,
   Trash2,
+  TrendingUp,
+  DollarSign,
+  ArrowUpRight,
+  Gauge,
+  CircleDot,
 } from 'lucide-react';
 import {
   useLicense,
@@ -40,6 +46,7 @@ import {
   IS_TESTNET_MODE,
   LogEntry,
   LogLevel,
+  ActiveStream,
 } from '../context/SablierContext';
 import { Button } from './ui/button';
 import { cn } from '../lib/utils';
@@ -49,11 +56,17 @@ import { cn } from '../lib/utils';
 
 let _qrScriptLoaded = false;
 function loadQrScript(): Promise<void> {
-  if (_qrScriptLoaded || (window as any).QRCode) { _qrScriptLoaded = true; return Promise.resolve(); }
+  if (_qrScriptLoaded || (window as any).QRCode) {
+    _qrScriptLoaded = true;
+    return Promise.resolve();
+  }
   return new Promise((res, rej) => {
     const s = document.createElement('script');
     s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
-    s.onload = () => { _qrScriptLoaded = true; res(); };
+    s.onload = () => {
+      _qrScriptLoaded = true;
+      res();
+    };
     s.onerror = () => rej(new Error('QRCode CDN load failed'));
     document.head.appendChild(s);
   });
@@ -78,36 +91,38 @@ function InlineWcQr({
 
   useEffect(() => {
     if (!uri || !qrRef.current) return;
-    loadQrScript().then(() => {
-      if (!qrRef.current) return;
-      qrRef.current.innerHTML = '';
-      new (window as any).QRCode(qrRef.current, {
-        text: uri,
-        width: 148,
-        height: 148,
-        colorDark: '#000000',
-        colorLight: '#ffffff',
-        correctLevel: (window as any).QRCode.CorrectLevel.M,
-      });
-    }).catch(console.warn);
+    loadQrScript()
+      .then(() => {
+        if (!qrRef.current) return;
+        qrRef.current.innerHTML = '';
+        new (window as any).QRCode(qrRef.current, {
+          text: uri,
+          width: 148,
+          height: 148,
+          colorDark: '#000000',
+          colorLight: '#ffffff',
+          correctLevel: (window as any).QRCode.CorrectLevel.M,
+        });
+      })
+      .catch(console.warn);
   }, [uri]);
 
   const DL: Record<string, string> = {
     '🦊 MetaMask': `metamask://wc?uri=${encodeURIComponent(uri ?? '')}`,
-    '🛡️ Trust':    `trust://wc?uri=${encodeURIComponent(uri ?? '')}`,
+    '🛡️ Trust': `trust://wc?uri=${encodeURIComponent(uri ?? '')}`,
     '🔵 Coinbase': `cbwallet://wc?uri=${encodeURIComponent(uri ?? '')}`,
-    '🐰 Rabby':    `rabby://wc?uri=${encodeURIComponent(uri ?? '')}`,
+    '🐰 Rabby': `rabby://wc?uri=${encodeURIComponent(uri ?? '')}`,
   };
 
   return (
-    <div className="rounded-xl border border-border/50 bg-card/60 overflow-hidden">
+    <div className="overflow-hidden border rounded-xl border-border/50 bg-card/60">
       {/* QR section */}
       <div className="flex gap-3 p-3">
         {/* QR box */}
         <div className="flex-shrink-0 w-[162px] h-[162px] rounded-lg bg-white flex items-center justify-center overflow-hidden">
           {loading && (
             <div className="flex flex-col items-center gap-2">
-              <div className="w-5 h-5 border-2 border-violet-300 border-t-violet-600 rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 rounded-full border-violet-300 border-t-violet-600 animate-spin" />
               <span className="text-[9px] text-gray-400">Menghubungkan…</span>
             </div>
           )}
@@ -121,9 +136,9 @@ function InlineWcQr({
         </div>
 
         {/* Right side */}
-        <div className="flex-1 flex flex-col gap-2 min-w-0">
+        <div className="flex flex-col flex-1 min-w-0 gap-2">
           <div className="flex items-center gap-1.5">
-            <div className="w-2 h-2 rounded-full bg-blue-400" />
+            <div className="w-2 h-2 bg-blue-400 rounded-full" />
             <span className="text-[10px] font-semibold text-blue-300">WalletConnect v2</span>
           </div>
           <p className="text-[10px] text-muted-foreground leading-relaxed">
@@ -136,19 +151,29 @@ function InlineWcQr({
                 key={label}
                 disabled={!uri}
                 onClick={() => window.open(href, '_blank')}
-                className="flex flex-col items-center gap-1 py-2 rounded-lg border border-border/50 bg-muted/20 hover:border-violet-500/50 hover:bg-violet-500/10 transition-all text-center disabled:opacity-30 disabled:pointer-events-none">
+                className="flex flex-col items-center gap-1 py-2 text-center transition-all border rounded-lg border-border/50 bg-muted/20 hover:border-violet-500/50 hover:bg-violet-500/10 disabled:opacity-30 disabled:pointer-events-none">
                 <span className="text-base leading-none">{label.split(' ')[0]}</span>
-                <span className="text-[8px] text-muted-foreground leading-none">{label.split(' ').slice(1).join(' ')}</span>
+                <span className="text-[8px] text-muted-foreground leading-none">
+                  {label.split(' ').slice(1).join(' ')}
+                </span>
               </button>
             ))}
           </div>
           {/* Copy URI */}
           {uri && (
             <button
-              onClick={() => { navigator.clipboard.writeText(uri); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+              onClick={() => {
+                navigator.clipboard.writeText(uri);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              }}
               className="flex items-center gap-1.5 px-2 py-1.5 rounded-md border border-border/40 bg-muted/20 hover:border-violet-500/40 transition-all text-left w-full">
-              <code className="flex-1 text-[8px] text-muted-foreground font-mono truncate">{uri.slice(0, 36)}…</code>
-              <span className="text-[8px] text-violet-400 flex-shrink-0">{copied ? '✓' : 'Copy'}</span>
+              <code className="flex-1 text-[8px] text-muted-foreground font-mono truncate">
+                {uri.slice(0, 36)}…
+              </code>
+              <span className="text-[8px] text-violet-400 flex-shrink-0">
+                {copied ? '✓' : 'Copy'}
+              </span>
             </button>
           )}
         </div>
@@ -157,7 +182,9 @@ function InlineWcQr({
       {/* Manual divider */}
       <div className="flex items-center gap-2 px-3">
         <div className="flex-1 h-px bg-border/40" />
-        <span className="text-[9px] text-muted-foreground uppercase tracking-wider">atau input manual</span>
+        <span className="text-[9px] text-muted-foreground uppercase tracking-wider">
+          atau input manual
+        </span>
         <div className="flex-1 h-px bg-border/40" />
       </div>
 
@@ -491,9 +518,10 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
     try {
       const res = await api.wcGetUri();
       if (!res || res.error) {
-        const msg = res?.error === 'NO_PROJECT_ID'
-          ? 'Set VITE_WC_PROJECT_ID di .env'
-          : `WC error: ${res?.error ?? 'unknown'}`;
+        const msg =
+          res?.error === 'NO_PROJECT_ID'
+            ? 'Set VITE_WC_PROJECT_ID di .env'
+            : `WC error: ${res?.error ?? 'unknown'}`;
         setWcQrError(msg);
         setWcQrLoading(false);
         return;
@@ -514,7 +542,9 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
             setWcQrError(null);
             await connect(polled.address, polled.chainId);
           }
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }, 1000);
     } catch (e: any) {
       setWcQrError(e?.message ?? 'Gagal generate QR');
@@ -528,7 +558,10 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
     if (!api?.onWcApproved) return;
     const unsub = api.onWcApproved(async (result: { address: string; chainId: number }) => {
       if (result?.address) {
-        if (wcPollRef.current) { clearInterval(wcPollRef.current); wcPollRef.current = null; }
+        if (wcPollRef.current) {
+          clearInterval(wcPollRef.current);
+          wcPollRef.current = null;
+        }
         setWcQrUri(null);
         setWcQrError(null);
         setWcQrLoading(false);
@@ -1001,10 +1034,259 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+// ── StreamPaymentTooltip ─────────────────────────────────────────────────────
+// Hover card yang muncul di atas LicenseBadge, menampilkan breakdown pembayaran
+
+function useTokenPrice(symbol: string | undefined) {
+  const [price, setPrice] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!symbol) return;
+    const stable = ['USDC', 'USDT', 'DAI', 'FRAX', 'LUSD'];
+    if (stable.includes(symbol.toUpperCase())) {
+      setPrice(1);
+      return;
+    }
+
+    setLoading(true);
+    const coinId =
+      symbol.toUpperCase() === 'WETH'
+        ? 'ethereum'
+        : symbol.toUpperCase() === 'WBTC'
+          ? 'bitcoin'
+          : symbol.toLowerCase();
+
+    fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`, {
+      signal: AbortSignal.timeout(8000),
+    })
+      .then((r) => r.json())
+      .then((j) => setPrice(j[coinId]?.usd ?? null))
+      .catch(() => setPrice(null))
+      .finally(() => setLoading(false));
+  }, [symbol]);
+
+  return { price, loading };
+}
+
+function StreamPaymentCard({ stream, plan }: { stream: ActiveStream; plan: Plan }) {
+  const { price: tokenPrice, loading: priceLoading } = useTokenPrice(stream.tokenSymbol);
+  const [now, setNow] = useState(() => Date.now() / 1000);
+
+  // Tick every second for live calculation
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now() / 1000), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const decimals = stream.tokenDecimals;
+  const rateRaw = Number(stream.ratePerSecond);
+  const ratePerSec = rateRaw / 10 ** decimals;
+  const ratePerMin = ratePerSec * 60;
+  const ratePerHour = ratePerSec * 3600;
+  const ratePerDay = ratePerSec * 86400;
+  const ratePerMonth = ratePerSec * 86400 * 30;
+
+  const usdPerSec = tokenPrice != null ? ratePerSec * tokenPrice : null;
+  const usdPerMin = tokenPrice != null ? ratePerMin * tokenPrice : null;
+  const usdPerHour = tokenPrice != null ? ratePerHour * tokenPrice : null;
+  const usdPerDay = tokenPrice != null ? ratePerDay * tokenPrice : null;
+  const usdPerMonth = tokenPrice != null ? ratePerMonth * tokenPrice : null;
+
+  // Total streamed so far (withdrawn amount from contract + live accrual since lastAdjustmentTime)
+  const alreadyWithdrawnTokens = Number(stream.withdrawnAmount) / 10 ** decimals;
+  const liveAccrued = ratePerSec * Math.max(0, now - stream.lastAdjustmentTime);
+  const totalStreamedTokens = alreadyWithdrawnTokens + liveAccrued;
+  const totalStreamedUsd = tokenPrice != null ? totalStreamedTokens * tokenPrice : null;
+
+  const fmt = (n: number, dp = 4) =>
+    n.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
+  const fmtUsd = (n: number) =>
+    n < 0.01
+      ? `<$0.01`
+      : `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const fmtToken = (n: number) => (n < 0.00001 ? n.toExponential(3) : fmt(n, 6));
+
+  const planColor = plan === 'pro' ? 'text-violet-400' : 'text-blue-400';
+  const planBg =
+    plan === 'pro' ? 'bg-violet-500/10 border-violet-500/25' : 'bg-blue-500/10 border-blue-500/25';
+  const barColor = plan === 'pro' ? 'from-violet-500 to-violet-400' : 'from-blue-500 to-blue-400';
+
+  const rows: Array<{ label: string; tokens: number; usd: number | null }> = [
+    { label: 'per detik', tokens: ratePerSec, usd: usdPerSec },
+    { label: 'per menit', tokens: ratePerMin, usd: usdPerMin },
+    { label: 'per jam', tokens: ratePerHour, usd: usdPerHour },
+    { label: 'per hari', tokens: ratePerDay, usd: usdPerDay },
+    { label: 'per bulan', tokens: ratePerMonth, usd: usdPerMonth },
+  ];
+
+  return (
+    <div
+      className={`w-[280px] rounded-xl border ${planBg} bg-card/95 backdrop-blur-sm shadow-2xl shadow-black/60 overflow-hidden`}>
+      {/* Top gradient line */}
+      <div
+        className={`h-[1.5px] bg-gradient-to-r from-transparent ${plan === 'pro' ? 'via-violet-500/60' : 'via-blue-500/60'} to-transparent`}
+      />
+
+      {/* Header */}
+      <div className="px-3 pt-3 pb-2 border-b border-border/30">
+        <div className="flex items-center gap-2 mb-1">
+          <div
+            className={`w-1.5 h-1.5 rounded-full animate-pulse ${plan === 'pro' ? 'bg-violet-400' : 'bg-blue-400'}`}
+          />
+          <span className={`text-[10px] font-semibold ${planColor}`}>
+            Stream Aktif — {PLAN_META[plan].label}
+          </span>
+          <span className="ml-auto text-[9px] text-muted-foreground font-mono">
+            {stream.chainName}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] text-muted-foreground font-mono">
+            {stream.tokenSymbol}
+            {tokenPrice != null && (
+              <span className="ml-1 text-emerald-400">
+                @ ${tokenPrice.toLocaleString('en-US', { maximumFractionDigits: 4 })}
+              </span>
+            )}
+            {priceLoading && <span className="ml-1 text-muted-foreground/50">fetching…</span>}
+          </span>
+          <span className="text-[9px] text-muted-foreground font-mono">
+            dari {stream.sender.slice(0, 6)}…{stream.sender.slice(-4)}
+          </span>
+        </div>
+      </div>
+
+      {/* Rate breakdown table */}
+      <div className="px-3 py-2 space-y-0.5">
+        <p className="text-[9px] font-semibold text-muted-foreground/60 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+          <Gauge className="w-2.5 h-2.5" /> Rate Pembayaran
+        </p>
+        {rows.map(({ label, tokens, usd }) => (
+          <div key={label} className="flex items-center justify-between py-0.5">
+            <span className="text-[10px] text-muted-foreground w-[68px]">{label}</span>
+            <span className="text-[10px] font-mono text-foreground/80 flex-1 text-right">
+              {fmtToken(tokens)} {stream.tokenSymbol}
+            </span>
+            <span
+              className={`text-[10px] font-semibold w-[68px] text-right ${usd != null ? 'text-emerald-400' : 'text-muted-foreground/40'}`}>
+              {usd != null ? fmtUsd(usd) : '—'}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* Divider */}
+      <div className="h-px mx-3 bg-border/30" />
+
+      {/* Total streamed */}
+      <div className="px-3 py-2 space-y-1">
+        <p className="text-[9px] font-semibold text-muted-foreground/60 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+          <TrendingUp className="w-2.5 h-2.5" /> Total Diterima (Live)
+        </p>
+        <div className="flex items-end justify-between">
+          <div>
+            <p className="font-mono text-sm font-bold text-foreground">
+              {fmtToken(totalStreamedTokens)}{' '}
+              <span className="text-xs font-normal text-muted-foreground">
+                {stream.tokenSymbol}
+              </span>
+            </p>
+            {totalStreamedUsd != null && (
+              <p className={`text-xs font-semibold ${planColor} flex items-center gap-1`}>
+                <DollarSign className="w-3 h-3" />
+                {fmtUsd(totalStreamedUsd)} USD
+              </p>
+            )}
+          </div>
+          <div className="text-right">
+            <p className="text-[9px] text-muted-foreground">Tujuan</p>
+            <p className="text-[9px] font-mono text-muted-foreground/70">
+              {RECIPIENT_ADDRESS.slice(0, 8)}…{RECIPIENT_ADDRESS.slice(-6)}
+            </p>
+          </div>
+        </div>
+
+        {/* Live streaming indicator */}
+        <div className="flex items-center gap-1.5 mt-1">
+          <div className="flex-1 h-1 overflow-hidden rounded-full bg-muted/40">
+            <div
+              className={`h-full rounded-full bg-gradient-to-r ${barColor} animate-pulse`}
+              style={{ width: '100%', opacity: 0.7 }}
+            />
+          </div>
+          <span className="text-[9px] text-muted-foreground/60 flex items-center gap-0.5">
+            <CircleDot className="w-2 h-2 text-emerald-400" />
+            streaming...
+          </span>
+        </div>
+      </div>
+
+      {/* Monthly plan context */}
+      <div className="px-3 pb-3">
+        <div
+          className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg ${plan === 'pro' ? 'bg-violet-500/10' : 'bg-blue-500/10'}`}>
+          <span className="text-[9px] text-muted-foreground">
+            {PLAN_META[plan].label} threshold
+          </span>
+          <span className={`text-[10px] font-semibold ${planColor}`}>
+            ≥ ${PLAN_MIN_DEPOSIT[plan === 'pro' ? 'pro' : 'basic']}/bln
+          </span>
+          {usdPerMonth != null && (
+            <span className="flex items-center gap-0.5 text-[10px] text-emerald-400 font-semibold">
+              <ArrowUpRight className="w-2.5 h-2.5" />
+              {fmtUsd(usdPerMonth)}/bln ✓
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // LicenseBadge — sidebar footer
 export function LicenseBadge({ onClick }: { onClick?: () => void }) {
-  const { status, currentPlan, isDev } = useLicense();
+  const { status, currentPlan, activeStream, isDev } = useLicense();
   const [showModal, setShowModal] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [tooltipStyle, setTooltipStyle] = useState<React.CSSProperties>({});
+  const badgeRef = useRef<HTMLButtonElement>(null);
+
+  const hasPaidPlan = status === 'basic' || status === 'pro';
+
+  // Calculate fixed position via getBoundingClientRect so Portal renders correctly
+  // regardless of sidebar overflow:hidden clipping
+  const handleMouseEnter = () => {
+    if (badgeRef.current) {
+      const rect = badgeRef.current.getBoundingClientRect();
+      const tooltipWidth = 280;
+      const tooltipHeight = 340; // approximate
+      const spaceAbove = rect.top;
+      const left = rect.left + rect.width / 2 - tooltipWidth / 2;
+      const clampedLeft = Math.max(8, Math.min(left, window.innerWidth - tooltipWidth - 8));
+
+      if (spaceAbove > tooltipHeight + 12) {
+        // show above
+        setTooltipStyle({
+          position: 'fixed',
+          bottom: window.innerHeight - rect.top + 8,
+          left: clampedLeft,
+          zIndex: 9999,
+          filter: 'drop-shadow(0 8px 32px rgba(0,0,0,0.7))',
+        });
+      } else {
+        // show below
+        setTooltipStyle({
+          position: 'fixed',
+          top: rect.bottom + 8,
+          left: clampedLeft,
+          zIndex: 9999,
+          filter: 'drop-shadow(0 8px 32px rgba(0,0,0,0.7))',
+        });
+      }
+    }
+    setHovered(true);
+  };
 
   const cfg =
     isDev || status === 'dev'
@@ -1044,8 +1326,20 @@ export function LicenseBadge({ onClick }: { onClick?: () => void }) {
                 };
 
   return (
-    <>
+    <div onMouseEnter={handleMouseEnter} onMouseLeave={() => setHovered(false)}>
+      {/* Payment tooltip via Portal — bypasses sidebar overflow:hidden */}
+      {hovered &&
+        hasPaidPlan &&
+        activeStream &&
+        createPortal(
+          <div style={tooltipStyle} className="pointer-events-none">
+            <StreamPaymentCard stream={activeStream} plan={currentPlan} />
+          </div>,
+          document.body,
+        )}
+
       <button
+        ref={badgeRef}
         onClick={() => {
           onClick?.();
           setShowModal(true);
@@ -1053,12 +1347,14 @@ export function LicenseBadge({ onClick }: { onClick?: () => void }) {
         className={cn(
           'flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[10px] font-medium transition-all w-full',
           cfg.cls,
+          hasPaidPlan && 'hover:brightness-110',
         )}>
         {cfg.icon}
         <span className="flex-1 text-left">{cfg.text}</span>
+        {hasPaidPlan && activeStream && <TrendingUp className="w-2.5 h-2.5 opacity-50" />}
       </button>
       {showModal && <LicenseModal onClose={() => setShowModal(false)} />}
-    </>
+    </div>
   );
 }
 

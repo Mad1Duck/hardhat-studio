@@ -1,4 +1,15 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  ReactNode,
+} from 'react';
+
+/* Auto-check interval: every 60 seconds */
+const STREAM_POLL_INTERVAL_MS = 60_000;
 
 export const RECIPIENT_ADDRESS = import.meta.env.VITE_RECIPIENT_ADDRESS;
 
@@ -23,18 +34,18 @@ export const PLAN_MIN_DEPOSIT = IS_TESTNET_MODE
  */
 
 const THEGRAPH_ENDPOINTS: Record<number, string> = {
-  1: 'https://api.studio.thegraph.com/query/112500/sablier-flow-ethereum/version/latest',
-  137: 'https://api.studio.thegraph.com/query/112500/sablier-flow-polygon/version/latest',
-  42161: 'https://api.studio.thegraph.com/query/112500/sablier-flow-arbitrum/version/latest',
-  56: 'https://api.studio.thegraph.com/query/112500/sablier-flow-bsc/version/latest',
-  10: 'https://api.studio.thegraph.com/query/112500/sablier-flow-optimism/version/latest',
-  8453: 'https://api.studio.thegraph.com/query/112500/sablier-flow-base/version/latest',
-  11155111: 'https://api.studio.thegraph.com/query/112500/sablier-flow-sepolia/version/latest',
-  84532: 'https://api.studio.thegraph.com/query/112500/sablier-flow-base-sepolia/version/latest',
+  1: 'https://api.studio.thegraph.com/query/57079/sablier-flow-ethereum/version/latest',
+  137: 'https://api.studio.thegraph.com/query/57079/sablier-flow-polygon/version/latest',
+  42161: 'https://api.studio.thegraph.com/query/57079/sablier-flow-arbitrum/version/latest',
+  56: 'https://api.studio.thegraph.com/query/57079/sablier-flow-bsc/version/latest',
+  10: 'https://api.studio.thegraph.com/query/57079/sablier-flow-optimism/version/latest',
+  8453: 'https://api.studio.thegraph.com/query/57079/sablier-flow-base/version/latest',
+  11155111: 'https://api.studio.thegraph.com/query/57079/sablier-flow-sepolia/version/latest',
+  84532: 'https://api.studio.thegraph.com/query/57079/sablier-flow-base-sepolia/version/latest',
   421614:
-    'https://api.studio.thegraph.com/query/112500/sablier-flow-arbitrum-sepolia/version/latest',
+    'https://api.studio.thegraph.com/query/57079/sablier-flow-arbitrum-sepolia/version/latest',
   11155420:
-    'https://api.studio.thegraph.com/query/112500/sablier-flow-optimism-sepolia/version/latest',
+    'https://api.studio.thegraph.com/query/57079/sablier-flow-optimism-sepolia/version/latest',
 };
 
 /* 
@@ -159,9 +170,12 @@ type LicenseContextType = {
   error?: string;
   isDev: boolean;
   logs: LogEntry[];
+  lastChecked?: number;
+  streamRevoked: boolean;
 
   connect: (addr: string, chainId: number) => Promise<void>;
   disconnect: () => void;
+  logout: () => void;
   refresh: () => Promise<void>;
   clearLogs: () => void;
 
@@ -428,6 +442,9 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
   const [activeStream, setStream] = useState<ActiveStream>();
   const [error, setError] = useState<string>();
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [lastChecked, setLastChecked] = useState<number>();
+  const [streamRevoked, setStreamRevoked] = useState<boolean>(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const isDev = import.meta.env.VITE_DEV_UNLOCK === 'true';
 
@@ -559,6 +576,8 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
     setStream(stream);
     setPlan(plan);
     setStatus(plan);
+    setLastChecked(Date.now());
+    setStreamRevoked(false);
   }
 
   /*  connect  */
@@ -576,6 +595,21 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
         msg: `Wallet connected: ${addr.slice(0, 6)}…${addr.slice(-4)} on ${name}`,
       },
     ]);
+    // DEV/TESTNET BYPASS: skip subgraph check, unlock basic plan automatically
+    if (IS_TESTNET_MODE || isDev) {
+      appendLogs([
+        {
+          id: `${Date.now()}-dev-bypass`,
+          ts: Date.now(),
+          level: 'success',
+          msg: `[Dev/Testnet] Subgraph check bypassed → plan: Basic unlocked`,
+        },
+      ]);
+      setStatus('basic');
+      setPlan('basic');
+      return;
+    }
+
     // auto-refresh after connect
     setStatus('loading');
     setError(undefined);
@@ -617,8 +651,12 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
     setStatus(plan);
   }
 
-  /*  disconnect  */
-  function disconnect() {
+  /*  logout — clears wallet + stops polling  */
+  function logout() {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
     setWallet(undefined);
     setChainId(undefined);
     setChainName(undefined);
@@ -626,8 +664,85 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
     setPlan('free');
     setStream(undefined);
     setError(undefined);
+    setLastChecked(undefined);
+    setStreamRevoked(false);
     clearLogs();
+    appendLogs([
+      {
+        id: `${Date.now()}-logout`,
+        ts: Date.now(),
+        level: 'info',
+        msg: 'Logged out — wallet disconnected',
+      },
+    ]);
   }
+
+  /*  disconnect (alias for logout)  */
+  function disconnect() {
+    logout();
+  }
+
+  /*  auto-poll: start when wallet connects, stop on logout  */
+  useEffect(() => {
+    if (!walletAddress || !chainId) return;
+    // Skip polling in dev/testnet bypass mode
+    if (IS_TESTNET_MODE || isDev) return;
+
+    if (pollRef.current) clearInterval(pollRef.current);
+
+    pollRef.current = setInterval(async () => {
+      const resolvedChainName = chainName ?? CHAIN_NAMES[chainId] ?? `Chain ${chainId}`;
+      appendLogs([
+        {
+          id: `${Date.now()}-poll`,
+          ts: Date.now(),
+          level: 'debug',
+          msg: `[Auto-check] Polling stream status...`,
+        },
+      ]);
+
+      const { stream, logs: queryLogs } = await queryStreams(
+        walletAddress,
+        chainId,
+        resolvedChainName,
+      );
+      appendLogs(queryLogs);
+      setLastChecked(Date.now());
+
+      if (!stream) {
+        // Stream paused or cancelled — downgrade immediately
+        appendLogs([
+          {
+            id: `${Date.now()}-revoked`,
+            ts: Date.now(),
+            level: 'error',
+            msg: '[Auto-check] Stream paused or cancelled — plan downgraded to Free',
+          },
+        ]);
+        setStreamRevoked(true);
+        setStatus('free');
+        setPlan('free');
+        setStream(undefined);
+      } else {
+        setStreamRevoked(false);
+        appendLogs([
+          {
+            id: `${Date.now()}-poll-ok`,
+            ts: Date.now(),
+            level: 'success',
+            msg: `[Auto-check] Stream OK — plan active`,
+          },
+        ]);
+      }
+    }, STREAM_POLL_INTERVAL_MS);
+
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [walletAddress, chainId, chainName, isDev]);
 
   /*  permission helpers  */
   function can(feature: Feature) {
@@ -655,8 +770,11 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
         error,
         isDev,
         logs,
+        lastChecked,
+        streamRevoked,
         connect,
         disconnect,
+        logout,
         refresh,
         clearLogs,
         can,
