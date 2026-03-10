@@ -27,6 +27,7 @@
     ]
   },
   "include": [
-    "src/renderer/src/**/*"
+    "src/renderer/src/**/*",
+    "src/main/services/discord.api.service.ts"
   ]
 }

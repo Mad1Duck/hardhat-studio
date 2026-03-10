@@ -1,6 +1,6 @@
-// 
+// ─────────────────────────────────────────────────────────────────────────────
 //  LICENSE TYPES — single source of truth for all shared types
-// 
+// ─────────────────────────────────────────────────────────────────────────────
 
 export type Plan = 'free' | 'basic' | 'pro';
 
@@ -107,4 +107,7 @@ export type LicenseContextType = {
   applyStreamStatus: (stream: ActiveStream) => Promise<void>;
   can: (feature: Feature) => boolean;
   planFor: (feature: Feature) => Plan;
+  // Discord bypass
+  isDiscordLoggedIn: boolean;
+  refreshDiscordStatus: () => Promise<void>;
 };

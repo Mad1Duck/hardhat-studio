@@ -18,6 +18,29 @@ async function getStorage(key) {
 async function deleteStorage(key) {
   await keytar.deletePassword(SERVICE, key);
 }
+async function checkUserRoles({
+  botToken,
+  guildId,
+  userId,
+  roleIds
+}) {
+  try {
+    const res = await axios.get(
+      `https://discord.com/api/v10/guilds/${guildId}/members/${userId}`,
+      { headers: { Authorization: `Bot ${botToken}` } }
+    );
+    const userRoles = res.data.roles;
+    console.log("[Discord] User roles:", userRoles);
+    return roleIds.some((id) => userRoles.includes(id));
+  } catch (error) {
+    if (error.response?.status === 404) {
+      console.log("[Discord] User tidak ada di server:", guildId);
+      return false;
+    }
+    console.error("[Discord] API error:", error.response?.data ?? error);
+    throw error;
+  }
+}
 const isDev = process.env.NODE_ENV === "development" || !!process.env["ELECTRON_RENDERER_URL"];
 dotenv.config();
 let autoUpdater = null;
@@ -166,6 +189,17 @@ electron.ipcMain.handle("wc-send-transaction", async (_, { from, to, data, chain
     return { error: err?.message ?? String(err) };
   }
 });
+electron.ipcMain.handle(
+  "discord-check-role",
+  async (_, { guildId, userId, roleIds }) => {
+    const botToken = process.env.DISCORD_BOT_TOKEN ?? "";
+    if (!botToken) {
+      console.warn("[Discord] DISCORD_BOT_TOKEN not set in env");
+      return false;
+    }
+    return checkUserRoles({ botToken, guildId, userId, roleIds });
+  }
+);
 electron.ipcMain.handle("get-user", async () => {
   return await getStorage("discord_user");
 });

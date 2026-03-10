@@ -99,6 +99,7 @@ const api = {
   // WalletConnect v2: send transaction via active WC session (for pause/resume)
   wcSendTransaction: (params) => electron.ipcRenderer.invoke("wc-send-transaction", params),
   discordLogin: () => electron.ipcRenderer.invoke("discord-login"),
+  checkDiscordRole: (params) => electron.ipcRenderer.invoke("discord-check-role", params),
   getUser: () => electron.ipcRenderer.invoke("get-user"),
   logout: () => electron.ipcRenderer.invoke("logout"),
   // ── License ──────────────────────────────────────────────────────────────

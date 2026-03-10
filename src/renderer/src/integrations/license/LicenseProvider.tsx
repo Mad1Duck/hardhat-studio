@@ -12,14 +12,7 @@ import {
   ReactNode,
 } from 'react';
 
-import type {
-  Plan,
-  Status,
-  Feature,
-  LogEntry,
-  ActiveStream,
-  LicenseContextType,
-} from '@/integrations/license/types';
+import type { Plan, Status, Feature, LogEntry, ActiveStream, LicenseContextType } from './types';
 
 import {
   IS_DEV_UNLOCK,
@@ -28,16 +21,17 @@ import {
   PLAN_CONFIG,
   FEATURE_TIERS,
   detectPlan,
-} from '@/integrations/license/config/planConfig';
+} from './config/planConfig';
 
-import { CHAIN_NAMES, SABLIER_FLOW_CONTRACTS } from '@/integrations/license/config/chainConfig';
-import { fetchTokenPrice } from '@/integrations/license/lib/tokenPrice';
-import { queryStreams } from '@/integrations/license/lib/queryStreams';
-import {
-  encodePause,
-  encodeRestart,
-  parseStreamNumericId,
-} from '@/integrations/license/lib/contractUtils';
+import { CHAIN_NAMES, SABLIER_FLOW_CONTRACTS } from './config/chainConfig';
+import { fetchTokenPrice } from './lib/tokenPrice';
+import { queryStreams } from './lib/queryStreams';
+import { encodePause, encodeRestart, parseStreamNumericId } from './lib/contractUtils';
+
+// Discord — config + role helpers (adjust path to your discord.config location)
+import { DISCORD_RULES, getDiscordBypassPlan } from '../discord/config/discord.config';
+import { clearRoleCache, resolveMatchedRules } from '../discord/libs/discord.role.lib';
+// import { resolveMatchedRules, clearRoleCache } from '../discord/lib/discordRoles';
 
 //  Context
 const LicenseContext = createContext<LicenseContextType | null>(null);
@@ -75,7 +69,6 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
 
   //  Log helpers
   const appendLogs = (entries: LogEntry[]) => setLogs((prev) => [...prev, ...entries]);
-
   function clearLogs() {
     setLogs([]);
   }
@@ -130,11 +123,10 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
     [startPricePolling],
   );
 
-  //  applyStreams: store list + auto-pick best stream
+  //  applyStreams
   const applyStreams = useCallback(
     async (streams: ActiveStream[], preserveSelectedId?: string | null) => {
       setAvailableStreams(streams);
-
       if (streams.length === 0) {
         setStream(undefined);
         setSelectedStreamId(null);
@@ -143,19 +135,17 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
         setStreamRevoked(true);
         return;
       }
-
       const preferred = preserveSelectedId ?? selectedStreamId;
       const found = streams.find((s) => s.streamId === preferred);
       const firstHealthy = streams.find((s) => !s.paused && !s.hasDebt);
       const chosen = found ?? firstHealthy ?? streams[0];
-
       setSelectedStreamId(chosen.streamId);
       await applyStreamStatus(chosen);
     },
     [selectedStreamId, applyStreamStatus],
   );
 
-  //  selectStream: user picks a specific stream
+  //  selectStream
   const selectStream = useCallback(
     async (streamId: string) => {
       const found = availableStreams.find((s) => s.streamId === streamId);
@@ -182,7 +172,6 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
     setStatus('loading');
     setError(undefined);
     appendLogs([mkLog('info', 'Refreshing streams…')]);
-
     const { streams, logs: qLogs } = await queryStreams(
       walletAddress,
       chainId,
@@ -201,7 +190,6 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
     setChainId(cid);
     setChainName(name);
     clearLogs();
-
     appendLogs([
       mkLog('info', `Wallet connected: ${addr.slice(0, 6)}…${addr.slice(-4)} on ${name}`),
     ]);
@@ -292,7 +280,6 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
     if (!activeStream) throw new Error('No active stream to pause.');
     const numId = parseStreamNumericId(activeStream);
     if (numId === null) throw new Error(`Cannot parse stream ID: ${activeStream.streamAlias}`);
-
     setStreamActionPending(true);
     appendLogs([mkLog('info', `[Pause] Stream ${activeStream.streamAlias} (ID: ${numId})`)]);
     try {
@@ -310,7 +297,6 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
     if (!activeStream) throw new Error('No paused stream to resume.');
     const numId = parseStreamNumericId(activeStream);
     if (numId === null) throw new Error(`Cannot parse stream ID: ${activeStream.streamAlias}`);
-
     setStreamActionPending(true);
     appendLogs([
       mkLog(
@@ -379,9 +365,9 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
         return;
       }
       setSelectedChainId(session.selectedChainId ?? null);
-      connect(session.walletAddress, session.chainId).catch(() => {
-        localStorage.removeItem('sablier_session');
-      });
+      connect(session.walletAddress, session.chainId).catch(() =>
+        localStorage.removeItem('sablier_session'),
+      );
     } catch {
       /* ignore */
     }
@@ -415,7 +401,6 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
     pollRef.current = setInterval(async () => {
       const resolvedName = chainName ?? CHAIN_NAMES[chainId] ?? `Chain ${chainId}`;
       appendLogs([mkLog('debug', '[Auto-check] Checking stream status…')]);
-
       const { streams, logs: qLogs } = await queryStreams(
         walletAddress,
         chainId,
@@ -436,7 +421,6 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
       }
 
       setAvailableStreams(streams);
-
       const freshSelected = streams.find((s) => s.streamId === selectedStreamId);
       if (!freshSelected) {
         appendLogs([
@@ -459,10 +443,49 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [walletAddress, chainId, chainName, isDev, selectedStreamId, applyStreamStatus]);
 
-  //  Permission helpers
+  // ── Discord role-based bypass ───────────────────────────────────────────────
+  // discordBypassPlan is 'free' | 'basic' | 'pro' based on actual guild role.
+  // 'free' = not logged in OR logged in but no matching role in any DISCORD_RULES guild.
+  const [discordBypassPlan, setDiscordBypassPlan] = useState<Plan>('free');
+
+  const refreshDiscordStatus = useCallback(async () => {
+    if (DISCORD_RULES.length === 0) return;
+    const api = (window as any).api;
+    if (!api?.getUser) return;
+    try {
+      const user = await api.getUser();
+      if (!user?.id) {
+        setDiscordBypassPlan('free');
+        return;
+      }
+      clearRoleCache();
+      const matched = await resolveMatchedRules(user.id, DISCORD_RULES);
+      setDiscordBypassPlan(getDiscordBypassPlan(matched));
+    } catch {
+      setDiscordBypassPlan('free');
+    }
+  }, []);
+
+  // Check on mount
+  useEffect(() => {
+    refreshDiscordStatus();
+  }, [refreshDiscordStatus]);
+
+  // Expose as boolean for context consumers that just need "is bypassed"
+  const isDiscordLoggedIn = discordBypassPlan !== 'free';
+
+  // ── Permission helpers ──────────────────────────────────────────────────────
   function can(feature: Feature): boolean {
     const required = FEATURE_TIERS[feature];
+
+    // 1. Dev unlock — highest priority
     if (isDev) return true;
+
+    // 2. Discord role bypass
+    if (discordBypassPlan === 'pro') return true;
+    if (discordBypassPlan === 'basic') return required === 'free' || required === 'basic';
+
+    // 3. Stream-based access (normal flow)
     if (activeStream?.paused || activeStream?.hasDebt) return required === 'free';
     if (status === 'debt' || status === 'paused') return required === 'free';
     if (required === 'free') return true;
@@ -507,6 +530,8 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
         applyStreamStatus,
         can,
         planFor,
+        isDiscordLoggedIn,
+        refreshDiscordStatus,
       }}>
       {children}
     </LicenseContext.Provider>

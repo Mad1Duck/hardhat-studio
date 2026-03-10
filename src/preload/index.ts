@@ -123,6 +123,7 @@ const api = {
     ipcRenderer.invoke('wc-send-transaction', params),
 
   discordLogin: () => ipcRenderer.invoke("discord-login"),
+  checkDiscordRole: (params: { guildId: string; userId: string; roleIds: string[]; }) => ipcRenderer.invoke("discord-check-role", params),
   getUser: () => ipcRenderer.invoke("get-user"),
   logout: () => ipcRenderer.invoke("logout"),
 

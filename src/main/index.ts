@@ -7,6 +7,7 @@ const isDev = process.env.NODE_ENV === 'development' || !!process.env['ELECTRON_
 import axios from "axios";
 import { deleteStorage, getStorage, setStorage } from "../database/storage";
 import dotenv from "dotenv";
+import { checkUserRoles } from './services/discord.api.service';
 
 dotenv.config();
 // ─── Auto updater ─────────────────────────────────────────────────────────────
@@ -174,6 +175,17 @@ ipcMain.handle('wc-send-transaction', async (_, { from, to, data, chainId }: {
   }
 });
 
+ipcMain.handle(
+  'discord-check-role',
+  async (_, { guildId, userId, roleIds }: { guildId: string; userId: string; roleIds: string[]; }) => {
+    const botToken = process.env.DISCORD_BOT_TOKEN ?? '';
+    if (!botToken) {
+      console.warn('[Discord] DISCORD_BOT_TOKEN not set in env');
+      return false;
+    }
+    return checkUserRoles({ botToken, guildId, userId, roleIds });
+  },
+);
 
 ipcMain.handle("get-user", async () => {
   return await getStorage("discord_user");

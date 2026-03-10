@@ -138,7 +138,6 @@ export function detectPlan(monthlyUSD: number): Plan {
   if (monthlyUSD >= PLAN_CONFIG.basic.monthlyUSD) return 'basic';
   return 'free';
 }
-
 //  Token allowlist 
 
 /**

@@ -1,13 +1,14 @@
-// 
+// ─────────────────────────────────────────────────────────────────────────────
 //  LICENSE MODULE — public API
 //  Import everything from here, not from sub-files directly.
 //
 //  Usage:
 //    import { LicenseProvider, useLicense, PLAN_CONFIG, planDailyUSD } from '@/license'
-// 
+// ─────────────────────────────────────────────────────────────────────────────
+
 
 // Provider + hook
-export { LicenseProvider, useLicense } from '@/integrations/license/LicenseProvider';
+export { LicenseProvider, useLicense } from './LicenseProvider';
 
 // Types
 export type {
@@ -28,6 +29,8 @@ export {
   STREAM_POLL_INTERVAL_MS,
   PLAN_CONFIG,
   PLAN_FREE_META,
+  PLAN_META,          // ← backward-compat alias
+  PLAN_MIN_DEPOSIT,   // ← backward-compat alias
   FEATURE_TIERS,
   ALLOWED_TOKENS,
   TIME,
@@ -37,8 +40,6 @@ export {
   planWeeklyUSD,
   planYearlyUSD,
   planMinRatePerSecond,
-  PLAN_MIN_DEPOSIT,
-  PLAN_META
 } from './config/planConfig';
 
 // Chain config
@@ -60,6 +61,20 @@ export {
 
 // Token price
 export { fetchTokenPrice } from './lib/tokenPrice';
+
+// Discord role bypass
+export {
+  resolveMatchedRules,
+  clearRoleCache,
+  getHighestPlan,
+} from '@/integrations/discord/libs/discord.role.lib';
+
+export {
+  DISCORD_RULES,
+  type DiscordRuleEntry,
+} from '@/integrations/discord/config/discord.config';
+
+export { getDiscordBypassPlan } from '@/integrations/discord/config/discord.config';
 
 // Components
 export { LicenseGate } from './components/LicenseGate';
