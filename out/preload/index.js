@@ -98,6 +98,7 @@ const api = {
   wcHasSession: () => electron.ipcRenderer.invoke("wc-has-session"),
   // WalletConnect v2: send transaction via active WC session (for pause/resume)
   wcSendTransaction: (params) => electron.ipcRenderer.invoke("wc-send-transaction", params),
+  exchangeDiscordCode: (code) => electron.ipcRenderer.invoke("discord-exchange-code", code),
   discordLogin: () => electron.ipcRenderer.invoke("discord-login"),
   checkDiscordRole: (params) => electron.ipcRenderer.invoke("discord-check-role", params),
   getUser: () => electron.ipcRenderer.invoke("get-user"),
@@ -112,7 +113,9 @@ const api = {
     const fn = (_, d) => cb(d);
     electron.ipcRenderer.on("update-status", fn);
     return () => electron.ipcRenderer.removeListener("update-status", fn);
-  }
+  },
+  onOAuthCallback: (cb) => electron.ipcRenderer.on("oauth-callback", (_, { code }) => cb(code)),
+  offOAuthCallback: () => electron.ipcRenderer.removeAllListeners("oauth-callback")
 };
 if (process.contextIsolated) {
   try {

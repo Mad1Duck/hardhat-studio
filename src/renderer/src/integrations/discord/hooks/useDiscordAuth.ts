@@ -1,6 +1,3 @@
-//
-//  useDiscordAuth — Discord login/logout + license role bypass sync
-//
 import { useEffect, useState, useCallback } from "react";
 import { DiscordUser } from "../types/discord.type";
 import { clearRoleCache, getHighestPlan, resolveMatchedRules, useLicense } from "@/integrations/license";
@@ -13,10 +10,8 @@ export function useDiscordAuth() {
   const [loading, setLoading] = useState(true);
   const [discordPlan, setDiscordPlan] = useState<DiscordPlan>('free');
   const [roleChecking, setRoleChecking] = useState(false);
-
   const { refreshDiscordStatus } = useLicense();
 
-  //  Check roles for a given user 
   const checkRoles = useCallback(async (u: DiscordUser | null) => {
     if (!u?.id || DISCORD_RULES.length === 0) {
       setDiscordPlan('free');
@@ -34,7 +29,6 @@ export function useDiscordAuth() {
     }
   }, []);
 
-  //  On mount: restore session + check roles 
   useEffect(() => {
     window.api.getUser()
       .then(async (u) => {
@@ -44,21 +38,33 @@ export function useDiscordAuth() {
       .finally(() => setLoading(false));
   }, [checkRoles]);
 
-  //  Login 
+  useEffect(() => {
+    const handleOAuthCallback = async (code: string) => {
+      try {
+        const u = await window.api.exchangeDiscordCode(code);
+        setUser(u);
+        await checkRoles(u);
+        await refreshDiscordStatus();
+      } catch {
+      }
+    };
+
+    window.api.onOAuthCallback(handleOAuthCallback);
+    return () => window.api.offOAuthCallback();
+  }, [checkRoles, refreshDiscordStatus]);
+
   const login = async () => {
-    const u = await window.api.discordLogin();
-    setUser(u);
-    await checkRoles(u);
-    await refreshDiscordStatus(); // sync LicenseProvider's can()
+    window.api.openExternal(
+      `https://discord.com/oauth2/authorize?client_id=${import.meta.env.VITE_DISCORD_CLIENT_ID}&redirect_uri=hardhatstudio://callback&response_type=code&scope=identify%20guilds`
+    );
   };
 
-  //  Logout 
   const logout = async () => {
     await window.api.logout();
     setUser(null);
     setDiscordPlan('free');
     clearRoleCache();
-    await refreshDiscordStatus(); // revoke bypass in LicenseProvider
+    await refreshDiscordStatus();
   };
 
   return {
@@ -66,8 +72,8 @@ export function useDiscordAuth() {
     loading,
     login,
     logout,
-    discordPlan,    // 'free' | 'basic' | 'pro' — plan granted by Discord role
-    roleChecking,   // true while checking (show spinner if needed)
+    discordPlan,
+    roleChecking,
     hasAccess: (plan: DiscordPlan): boolean => {
       if (discordPlan === 'pro') return true;
       if (discordPlan === 'basic' && plan !== 'pro') return true;

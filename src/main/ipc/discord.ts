@@ -1,31 +1,51 @@
-import { ipcMain, shell } from 'electron';
+import { ipcMain, shell, app, BrowserWindow } from 'electron';
 import axios from 'axios';
 import http from 'http';
 import { deleteStorage, getStorage, setStorage } from '../../database/storage';
 import { checkUserRoles } from '../services/discord.api.service';
 
 const DEV_REDIRECT_URI = 'http://localhost:4399/callback';
+const PROD_REDIRECT_URI = 'hardhatstudio://callback';
 
 let resolveLogin: ((user: any) => void) | null = null;
 let rejectLogin: ((err: any) => void) | null = null;
+
+// ─── Deep link handler (dipanggil dari main.ts) ───────────────────────────────
 
 export async function handleDiscordCallback(url: string): Promise<void> {
   try {
     const parsed = new URL(url);
     const code = parsed.searchParams.get('code');
-    if (!code) {
-      rejectLogin?.(new Error('No code in callback URL'));
+    if (!code) return;
+
+    const isDev = !app.isPackaged;
+
+    if (isDev) {
+      // Dev pakai localhost HTTP server, deep link tidak dipakai
       return;
     }
-    const user = await exchangeToken(code, process.env.DISCORD_REDIRECT_URI ?? 'hardhatstudio://callback');
-    resolveLogin?.(user);
+
+    // Production: jika ada resolveLogin (flow dari discord-login), selesaikan promise-nya
+    if (resolveLogin) {
+      try {
+        const user = await exchangeToken(code, PROD_REDIRECT_URI);
+        resolveLogin(user);
+      } catch (err) {
+        rejectLogin?.(err);
+      }
+      return;
+    }
+
+    // Fallback: kirim code ke renderer via IPC (jika dipanggil di luar flow discord-login)
+    const win = BrowserWindow.getAllWindows()[0];
+    win?.webContents.send('oauth-callback', { code });
+
   } catch (err) {
     rejectLogin?.(err);
-  } finally {
-    resolveLogin = null;
-    rejectLogin = null;
   }
 }
+
+// ─── Token exchange ───────────────────────────────────────────────────────────
 
 async function exchangeToken(code: string, redirectUri: string) {
   const params = new URLSearchParams({
@@ -42,25 +62,34 @@ async function exchangeToken(code: string, redirectUri: string) {
     { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
   );
 
+  const { access_token } = tokenRes.data;
+
   const userRes = await axios.get('https://discord.com/api/users/@me', {
-    headers: { Authorization: `Bearer ${tokenRes.data.access_token}` },
+    headers: { Authorization: `Bearer ${access_token}` },
   });
 
-  await setStorage('discord_access_token', tokenRes.data.access_token);
+  await setStorage('discord_access_token', access_token);
   await setStorage('discord_user', userRes.data);
+
   return userRes.data;
 }
 
+// ─── IPC Handlers ─────────────────────────────────────────────────────────────
+
 export function registerDiscordHandlers(): void {
+
+  // Get cached user
   ipcMain.handle('get-user', async () => {
     return getStorage('discord_user');
   });
 
+  // Logout
   ipcMain.handle('logout', async () => {
     await deleteStorage('discord_user');
     await deleteStorage('discord_access_token');
   });
 
+  // Check Discord role via bot token
   ipcMain.handle('discord-check-role', async (
     _,
     { guildId, userId, roleIds }: { guildId: string; userId: string; roleIds: string[]; },
@@ -73,6 +102,14 @@ export function registerDiscordHandlers(): void {
     return checkUserRoles({ botToken, guildId, userId, roleIds });
   });
 
+  // Exchange code (dipanggil renderer via useDiscordAuth jika pakai fallback IPC flow)
+  ipcMain.handle('discord-exchange-code', async (_, code: string) => {
+    const isDev = !app.isPackaged;
+    const redirectUri = isDev ? DEV_REDIRECT_URI : PROD_REDIRECT_URI;
+    return exchangeToken(code, redirectUri);
+  });
+
+  // Login — buka browser Discord OAuth
   ipcMain.handle('discord-login', async () => {
     resolveLogin = null;
     rejectLogin = null;
@@ -81,18 +118,11 @@ export function registerDiscordHandlers(): void {
     await deleteStorage('discord_user');
 
     const CLIENT_ID = process.env.DISCORD_CLIENT_ID!;
-
-    // ✅ Lazy eval — dievaluasi setelah .env sudah di-load
-    // Pakai VITE_NODE_ENV (sesuai .env kamu) karena itu yang kamu set
-    const isDev =
-      process.env.VITE_NODE_ENV === 'development';
-    const REDIRECT_URI = isDev
-      ? DEV_REDIRECT_URI
-      : (process.env.DISCORD_REDIRECT_URI ?? 'hardhatstudio://callback');
+    const isDev = !app.isPackaged;
+    const REDIRECT_URI = isDev ? DEV_REDIRECT_URI : PROD_REDIRECT_URI;
 
     console.log('[Discord] isDev:', isDev);
-    console.log('[Discord] VITE_NODE_ENV:', process.env.VITE_NODE_ENV);
-    console.log('[Discord] VITE_NODE_ENV:', process.env.VITE_NODE_ENV);
+    console.log('[Discord] app.isPackaged:', app.isPackaged);
     console.log('[Discord] CLIENT_ID:', CLIENT_ID);
     console.log('[Discord] REDIRECT_URI:', REDIRECT_URI);
 
@@ -125,13 +155,14 @@ export function registerDiscordHandlers(): void {
       if (isDev) {
         // Dev: HTTP server tangkap redirect dari localhost
         server = http.createServer(async (req, res) => {
-          const url = new URL(req.url!, DEV_REDIRECT_URI);
-          const code = url.searchParams.get('code');
+          if (!req.url) return;
+
+          const reqUrl = new URL(req.url, DEV_REDIRECT_URI);
+          const code = reqUrl.searchParams.get('code');
           if (!code) return;
 
           res.writeHead(200, { 'Content-Type': 'text/html' });
           res.end('<h2>Login berhasil. Silakan kembali ke aplikasi.</h2>');
-          server?.close();
 
           try {
             const user = await exchangeToken(code, DEV_REDIRECT_URI);
@@ -140,11 +171,19 @@ export function registerDiscordHandlers(): void {
             done(undefined, err);
           }
         });
+
         server.listen(4399, () => {
           console.log('[Discord] Listening on http://localhost:4399/callback');
         });
+
+        server.on('error', (err) => {
+          console.error('[Discord] Server error:', err);
+          done(undefined, err);
+        });
+
       } else {
         // Production: tunggu deep link hardhatstudio://callback
+        // handleDiscordCallback() akan resolve promise ini
         resolveLogin = (user) => done(user);
         rejectLogin = (err) => done(undefined, err);
       }

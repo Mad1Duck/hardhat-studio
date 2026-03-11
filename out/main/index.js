@@ -234,23 +234,31 @@ async function checkUserRoles({
   }
 }
 const DEV_REDIRECT_URI = "http://localhost:4399/callback";
+const PROD_REDIRECT_URI = "hardhatstudio://callback";
 let resolveLogin = null;
 let rejectLogin = null;
 async function handleDiscordCallback(url) {
   try {
     const parsed = new URL(url);
     const code = parsed.searchParams.get("code");
-    if (!code) {
-      rejectLogin?.(new Error("No code in callback URL"));
+    if (!code) return;
+    const isDev2 = !electron.app.isPackaged;
+    if (isDev2) {
       return;
     }
-    const user = await exchangeToken(code, process.env.DISCORD_REDIRECT_URI ?? "hardhatstudio://callback");
-    resolveLogin?.(user);
+    if (resolveLogin) {
+      try {
+        const user = await exchangeToken(code, PROD_REDIRECT_URI);
+        resolveLogin(user);
+      } catch (err) {
+        rejectLogin?.(err);
+      }
+      return;
+    }
+    const win = electron.BrowserWindow.getAllWindows()[0];
+    win?.webContents.send("oauth-callback", { code });
   } catch (err) {
     rejectLogin?.(err);
-  } finally {
-    resolveLogin = null;
-    rejectLogin = null;
   }
 }
 async function exchangeToken(code, redirectUri) {
@@ -266,10 +274,11 @@ async function exchangeToken(code, redirectUri) {
     params.toString(),
     { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
   );
+  const { access_token } = tokenRes.data;
   const userRes = await axios.get("https://discord.com/api/users/@me", {
-    headers: { Authorization: `Bearer ${tokenRes.data.access_token}` }
+    headers: { Authorization: `Bearer ${access_token}` }
   });
-  await setStorage("discord_access_token", tokenRes.data.access_token);
+  await setStorage("discord_access_token", access_token);
   await setStorage("discord_user", userRes.data);
   return userRes.data;
 }
@@ -289,17 +298,21 @@ function registerDiscordHandlers() {
     }
     return checkUserRoles({ botToken, guildId, userId, roleIds });
   });
+  electron.ipcMain.handle("discord-exchange-code", async (_, code) => {
+    const isDev2 = !electron.app.isPackaged;
+    const redirectUri = isDev2 ? DEV_REDIRECT_URI : PROD_REDIRECT_URI;
+    return exchangeToken(code, redirectUri);
+  });
   electron.ipcMain.handle("discord-login", async () => {
     resolveLogin = null;
     rejectLogin = null;
     await deleteStorage("discord_access_token");
     await deleteStorage("discord_user");
     const CLIENT_ID = process.env.DISCORD_CLIENT_ID;
-    const isDev2 = process.env.VITE_NODE_ENV === "development";
-    const REDIRECT_URI = isDev2 ? DEV_REDIRECT_URI : process.env.DISCORD_REDIRECT_URI ?? "hardhatstudio://callback";
+    const isDev2 = !electron.app.isPackaged;
+    const REDIRECT_URI = isDev2 ? DEV_REDIRECT_URI : PROD_REDIRECT_URI;
     console.log("[Discord] isDev:", isDev2);
-    console.log("[Discord] VITE_NODE_ENV:", process.env.VITE_NODE_ENV);
-    console.log("[Discord] VITE_NODE_ENV:", process.env.VITE_NODE_ENV);
+    console.log("[Discord] app.isPackaged:", electron.app.isPackaged);
     console.log("[Discord] CLIENT_ID:", CLIENT_ID);
     console.log("[Discord] REDIRECT_URI:", REDIRECT_URI);
     const authUrl = `https://discord.com/oauth2/authorize?client_id=${CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=identify`;
@@ -321,12 +334,12 @@ function registerDiscordHandlers() {
       };
       if (isDev2) {
         server = http.createServer(async (req, res) => {
-          const url = new URL(req.url, DEV_REDIRECT_URI);
-          const code = url.searchParams.get("code");
+          if (!req.url) return;
+          const reqUrl = new URL(req.url, DEV_REDIRECT_URI);
+          const code = reqUrl.searchParams.get("code");
           if (!code) return;
           res.writeHead(200, { "Content-Type": "text/html" });
           res.end("<h2>Login berhasil. Silakan kembali ke aplikasi.</h2>");
-          server?.close();
           try {
             const user = await exchangeToken(code, DEV_REDIRECT_URI);
             done(user);
@@ -336,6 +349,10 @@ function registerDiscordHandlers() {
         });
         server.listen(4399, () => {
           console.log("[Discord] Listening on http://localhost:4399/callback");
+        });
+        server.on("error", (err) => {
+          console.error("[Discord] Server error:", err);
+          done(void 0, err);
         });
       } else {
         resolveLogin = (user) => done(user);

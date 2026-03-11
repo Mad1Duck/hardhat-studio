@@ -122,6 +122,7 @@ const api = {
   wcSendTransaction: (params: { from: string; to: string; data: string; chainId: number; }) =>
     ipcRenderer.invoke('wc-send-transaction', params),
 
+  exchangeDiscordCode: (code: string) => ipcRenderer.invoke("discord-exchange-code", code),
   discordLogin: () => ipcRenderer.invoke("discord-login"),
   checkDiscordRole: (params: { guildId: string; userId: string; roleIds: string[]; }) => ipcRenderer.invoke("discord-check-role", params),
   getUser: () => ipcRenderer.invoke("get-user"),
@@ -146,6 +147,10 @@ const api = {
     ipcRenderer.on('update-status', fn);
     return () => ipcRenderer.removeListener('update-status', fn);
   },
+  onOAuthCallback: (cb: (code: string) => void) =>
+    ipcRenderer.on('oauth-callback', (_, { code }) => cb(code)),
+  offOAuthCallback: () =>
+    ipcRenderer.removeAllListeners('oauth-callback'),
 };
 
 if (process.contextIsolated) {

@@ -3,6 +3,9 @@ export { };
 declare global {
   interface Window {
     api: {
+      exchangeDiscordCode: (code: string) => Promise<any>;
+      onOAuthCallback: (cb: (code: string) => void) => void;
+      offOAuthCallback: () => void;
       discordLogin: () => Promise<DiscordUser>;
       getUser: () => Promise<DiscordUser | null>;
       logout: () => Promise<void>;
