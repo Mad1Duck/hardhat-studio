@@ -7,9 +7,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 
-// Provider + hook
-export { LicenseProvider, useLicense } from './LicenseProvider';
-
 // Types
 export type {
   Plan,

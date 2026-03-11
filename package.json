@@ -65,6 +65,12 @@
     "vite": "^5.0.12"
   },
   "build": {
+    "extraResources": [
+      {
+        "from": ".env",
+        "to": ".env"
+      }
+    ],
     "compression": "normal",
     "generateUpdatesFilesForAllChannels": true,
     "npmRebuild": false,

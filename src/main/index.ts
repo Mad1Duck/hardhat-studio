@@ -1,13 +1,17 @@
 import { app, shell, BrowserWindow } from 'electron';
 import { join } from 'path';
-import dotenv from 'dotenv';
+import { config } from 'dotenv';
 
-dotenv.config();
+// Load .env
+const envPath = app.isPackaged
+  ? join(process.resourcesPath, '.env')
+  : join(__dirname, '../../.env');
+config({ path: envPath });
 
-//  IPC modules 
+// IPC modules
 import { initAutoUpdater, setupAutoUpdaterWindow, registerUpdaterHandlers } from './ipc/updater';
 import { registerWalletConnectHandlers } from './ipc/walletconnect';
-import { registerDiscordHandlers } from './ipc/discord';
+import { registerDiscordHandlers, handleDiscordCallback } from './ipc/discord';
 import { registerLicenseHandlers } from './ipc/license';
 import { registerProjectHandlers } from './ipc/project';
 import { registerProcessHandlers, getProcesses } from './ipc/process';
@@ -16,18 +20,43 @@ import { registerGitHandlers } from './ipc/git';
 import { registerEvmHandlers } from './ipc/evm';
 import { registerAnalysisHandlers } from './ipc/analysis';
 
-//  Constants 
+// Constants
 const isDev = process.env.NODE_ENV === 'development' || !!process.env['ELECTRON_RENDERER_URL'];
-
 const iconPath = app.isPackaged
   ? join(process.resourcesPath, 'build/icon.png')
   : join(__dirname, '../../build/icon.png');
 
-//  Window ref 
+// Window ref
 let mainWindow: BrowserWindow | null = null;
 const getWin = () => mainWindow;
 
-//  Window creation 
+//  Register custom protocol 
+app.setAsDefaultProtocolClient('hardhatstudio'); // 👈 tambah ini
+
+// Windows / Linux: handle deep link via second-instance
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (_, argv) => {
+    // Focus window jika ada
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+    // Cari URL hardhatstudio:// dari argv
+    const url = argv.find(arg => arg.startsWith('hardhatstudio://'));
+    if (url) handleDiscordCallback(url); // 👈
+  });
+}
+
+// macOS: handle deep link via open-url
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  handleDiscordCallback(url); // 👈
+});
+
+// Window creation
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1600,
@@ -64,7 +93,7 @@ function createWindow(): void {
   }
 }
 
-//  Register all IPC handlers 
+// Register all IPC handlers
 function registerAllHandlers(): void {
   registerUpdaterHandlers();
   registerWalletConnectHandlers(getWin);
@@ -78,22 +107,19 @@ function registerAllHandlers(): void {
   registerAnalysisHandlers(getWin);
 }
 
-//  App lifecycle 
+// App lifecycle
 initAutoUpdater(isDev);
 registerAllHandlers();
 
 app.whenReady().then(() => {
   app.setAppUserModelId('com.hardhatstudio');
   createWindow();
-
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
 app.on('window-all-closed', () => {
-  // Kill all spawned child processes
   getProcesses().forEach(p => { try { p.kill(); } catch { } });
-
   if (process.platform !== 'darwin') app.quit();
 });
