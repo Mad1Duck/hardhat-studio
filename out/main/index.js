@@ -3,6 +3,7 @@ const electron = require("electron");
 const path = require("path");
 const dotenv = require("dotenv");
 const axios = require("axios");
+const http = require("http");
 const keytar = require("keytar");
 const child_process = require("child_process");
 const fs = require("fs");
@@ -42,7 +43,7 @@ function registerUpdaterHandlers() {
     return !!result;
   });
   electron.ipcMain.handle("open-download-page", async () => {
-    electron.shell.openExternal("https://github.com/RaihanArdianata/hardhat-studio/releases");
+    electron.shell.openExternal("https://github.com/Mad1Duck/hardhat-studio/releases");
   });
   electron.ipcMain.handle("check-for-update", async () => {
     if (!autoUpdater) return false;
@@ -232,6 +233,8 @@ async function checkUserRoles({
     throw error;
   }
 }
+const isDev$1 = process.env.NODE_ENV === "development";
+const DEV_REDIRECT_URI = "http://localhost:4399/callback";
 let resolveLogin = null;
 let rejectLogin = null;
 async function handleDiscordCallback(url) {
@@ -242,28 +245,7 @@ async function handleDiscordCallback(url) {
       rejectLogin?.(new Error("No code in callback URL"));
       return;
     }
-    const CLIENT_ID = process.env.DISCORD_CLIENT_ID;
-    const CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
-    const REDIRECT_URI = process.env.DISCORD_REDIRECT_URI;
-    const params = new URLSearchParams({
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET,
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: REDIRECT_URI
-    });
-    const tokenRes = await axios.post(
-      "https://discord.com/api/oauth2/token",
-      params.toString(),
-      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
-    );
-    const accessToken = tokenRes.data.access_token;
-    const userRes = await axios.get("https://discord.com/api/users/@me", {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-    const user = userRes.data;
-    await setStorage("discord_access_token", accessToken);
-    await setStorage("discord_user", user);
+    const user = await exchangeToken(code, process.env.DISCORD_REDIRECT_URI ?? "hardhatstudio://callback");
     resolveLogin?.(user);
   } catch (err) {
     rejectLogin?.(err);
@@ -271,6 +253,26 @@ async function handleDiscordCallback(url) {
     resolveLogin = null;
     rejectLogin = null;
   }
+}
+async function exchangeToken(code, redirectUri) {
+  const params = new URLSearchParams({
+    client_id: process.env.DISCORD_CLIENT_ID,
+    client_secret: process.env.DISCORD_CLIENT_SECRET,
+    grant_type: "authorization_code",
+    code,
+    redirect_uri: redirectUri
+  });
+  const tokenRes = await axios.post(
+    "https://discord.com/api/oauth2/token",
+    params.toString(),
+    { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+  );
+  const userRes = await axios.get("https://discord.com/api/users/@me", {
+    headers: { Authorization: `Bearer ${tokenRes.data.access_token}` }
+  });
+  await setStorage("discord_access_token", tokenRes.data.access_token);
+  await setStorage("discord_user", userRes.data);
+  return userRes.data;
 }
 function registerDiscordHandlers() {
   electron.ipcMain.handle("get-user", async () => {
@@ -294,26 +296,48 @@ function registerDiscordHandlers() {
     await deleteStorage("discord_access_token");
     await deleteStorage("discord_user");
     const CLIENT_ID = process.env.DISCORD_CLIENT_ID;
-    const REDIRECT_URI = process.env.DISCORD_REDIRECT_URI;
+    const REDIRECT_URI = process.env.DISCORD_REDIRECT_URI ?? "hardhatstudio://callback";
+    console.log("[Discord] isDev:", isDev$1);
+    console.log("[Discord] CLIENT_ID:", CLIENT_ID);
+    console.log("[Discord] REDIRECT_URI:", REDIRECT_URI);
     const authUrl = `https://discord.com/oauth2/authorize?client_id=${CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=identify`;
     return new Promise((resolve, reject) => {
-      resolveLogin = resolve;
-      rejectLogin = reject;
       const timeout = setTimeout(() => {
         resolveLogin = null;
         rejectLogin = null;
+        server?.close();
         reject(new Error("Login timeout"));
       }, 5 * 60 * 1e3);
-      const originalResolve = resolve;
-      const originalReject = reject;
-      resolveLogin = (user) => {
+      const done = (user, err) => {
         clearTimeout(timeout);
-        originalResolve(user);
+        resolveLogin = null;
+        rejectLogin = null;
+        if (err) reject(err);
+        else resolve(user);
       };
-      rejectLogin = (err) => {
-        clearTimeout(timeout);
-        originalReject(err);
-      };
+      let server = null;
+      if (isDev$1) {
+        server = http.createServer(async (req, res) => {
+          const url = new URL(req.url, DEV_REDIRECT_URI);
+          const code = url.searchParams.get("code");
+          if (!code) return;
+          res.writeHead(200, { "Content-Type": "text/html" });
+          res.end("<h2>Login berhasil. Silakan kembali ke aplikasi.</h2>");
+          server?.close();
+          try {
+            const user = await exchangeToken(code, DEV_REDIRECT_URI);
+            done(user);
+          } catch (err) {
+            done(void 0, err);
+          }
+        });
+        server.listen(4399, () => {
+          console.log("[Discord] Listening on http://localhost:4399/callback");
+        });
+      } else {
+        resolveLogin = (user) => done(user);
+        rejectLogin = (err) => done(void 0, err);
+      }
       electron.shell.openExternal(authUrl);
     });
   });

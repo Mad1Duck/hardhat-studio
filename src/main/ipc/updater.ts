@@ -52,7 +52,7 @@ export function registerUpdaterHandlers(): void {
   });
 
   ipcMain.handle('open-download-page', async () => {
-    shell.openExternal('https://github.com/RaihanArdianata/hardhat-studio/releases');
+    shell.openExternal('https://github.com/Mad1Duck/hardhat-studio/releases');
   });
 
   ipcMain.handle('check-for-update', async () => {
