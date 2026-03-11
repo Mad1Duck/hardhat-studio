@@ -64,7 +64,7 @@ export function LicenseGate({
               : `Upgrade to Basic to unlock this feature (stream ≥ $${PLAN_META.basic.price}/month).`}
           </p>
           <p className="text-[10px] text-muted-foreground/50">
-            Plan kamu sekarang:{' '}
+            Plan kamu Your plan now:{' '}
             <span className={cn('font-semibold', PLAN_META[currentPlan].color)}>
               {PLAN_META[currentPlan].label}
             </span>
@@ -81,7 +81,7 @@ export function LicenseGate({
           )}
           onClick={() => setShowModal(true)}>
           <Droplets className="w-3.5 h-3.5" />
-          Upgrade ke {meta.label}
+          Upgrade {meta.label}
         </Button>
       </div>
 
