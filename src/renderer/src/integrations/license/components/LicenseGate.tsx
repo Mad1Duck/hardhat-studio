@@ -60,8 +60,8 @@ export function LicenseGate({
           </div>
           <p className="text-xs text-muted-foreground max-w-[210px] leading-relaxed">
             {required === 'pro'
-              ? `Upgrade ke Pro (stream ≥ $${PLAN_META.pro.price}/bln) untuk akses fitur ini.`
-              : `Upgrade ke Basic (stream ≥ $${PLAN_META.basic.price}/bln) untuk akses fitur ini.`}
+              ? `Upgrade to Pro (stream ≥ $${PLAN_META.pro.price}/month) to unlock this feature.`
+              : `Upgrade to Basic to unlock this feature (stream ≥ $${PLAN_META.basic.price}/month).`}
           </p>
           <p className="text-[10px] text-muted-foreground/50">
             Plan kamu sekarang:{' '}

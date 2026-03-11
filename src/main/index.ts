@@ -9,7 +9,7 @@ import { deleteStorage, getStorage, setStorage } from "../database/storage";
 import dotenv from "dotenv";
 import { checkUserRoles } from './services/discord.api.service';
 import log from "electron-log";
-
+import http from "http";
 dotenv.config();
 // ─── Auto updater ─────────────────────────────────────────────────────────────
 // electron-updater reads publish config from package.json build.publish
@@ -227,15 +227,14 @@ ipcMain.handle("logout", async () => {
   await deleteStorage("discord_user");
 });
 
+
 ipcMain.handle("discord-login", async () => {
   return new Promise(async (resolve, reject) => {
+
     const CLIENT_ID = process.env.DISCORD_CLIENT_ID!;
     const CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET!;
     const REDIRECT_URI = process.env.DISCORD_REDIRECT_URI!;
-
-
-    await session.fromPartition("oauth").clearStorageData();
-    await session.fromPartition("oauth").clearCache();
+    // contoh: http://localhost:4399/callback
 
     await deleteStorage("discord_access_token");
     await deleteStorage("discord_user");
@@ -247,44 +246,38 @@ ipcMain.handle("discord-login", async () => {
       `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
       `&scope=identify`;
 
-    const authWindow = new BrowserWindow({
-      width: 500,
-      height: 700,
-      webPreferences: {
-        partition: "oauth",
-        nodeIntegration: false,
-        contextIsolation: true
-      }
-    });
-
-    authWindow.loadURL(authUrl);
-
-    authWindow.webContents.on("will-navigate", async (event, newUrl) => {
-      if (!newUrl.startsWith(REDIRECT_URI)) return;
-
-      event.preventDefault();
-
-      const url = new URL(newUrl);
-      const code = url.searchParams.get("code");
-
+    // server untuk menangkap redirect OAuth
+    const server = http.createServer(async (req, res) => {
       try {
+
+        const url = new URL(req.url!, REDIRECT_URI);
+        const code = url.searchParams.get("code");
+
+        if (!code) return;
+
+        // tampilkan halaman sukses
+        res.writeHead(200, { "Content-Type": "text/html" });
+        res.end("<h2>Login berhasil. Silakan kembali ke aplikasi.</h2>");
+
+        server.close();
+
+        const params = new URLSearchParams({
+          client_id: CLIENT_ID,
+          client_secret: CLIENT_SECRET,
+          grant_type: "authorization_code",
+          code: code,
+          redirect_uri: REDIRECT_URI,
+        });
+
         const tokenRes = await axios.post(
           "https://discord.com/api/oauth2/token",
-          new URLSearchParams({
-            client_id: CLIENT_ID,
-            client_secret: CLIENT_SECRET,
-            grant_type: "authorization_code",
-            code: code!,
-            redirect_uri: REDIRECT_URI,
-          }),
+          params.toString(),
           {
             headers: {
               "Content-Type": "application/x-www-form-urlencoded",
             },
           }
         );
-
-        console.log(tokenRes.data, "=====tokenRes.data=====");
 
         const accessToken = tokenRes.data.access_token;
 
@@ -302,14 +295,19 @@ ipcMain.handle("discord-login", async () => {
         await setStorage("discord_access_token", accessToken);
         await setStorage("discord_user", user);
 
-        authWindow.close();
         resolve(user);
 
       } catch (err) {
-        authWindow.close();
+        server.close();
         reject(err);
       }
     });
+
+    server.listen(4399);
+
+    // buka browser default
+    await shell.openExternal(authUrl);
+
   });
 });
 // ─── WalletConnect: check if active session exists (used by renderer before sending tx) ──

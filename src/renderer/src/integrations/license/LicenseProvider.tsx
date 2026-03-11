@@ -135,6 +135,8 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
         setStreamRevoked(true);
         return;
       }
+      console.log(streams, '=====streams=====');
+
       const preferred = preserveSelectedId ?? selectedStreamId;
       const found = streams.find((s) => s.streamId === preferred);
       const firstHealthy = streams.find((s) => !s.paused && !s.hasDebt);

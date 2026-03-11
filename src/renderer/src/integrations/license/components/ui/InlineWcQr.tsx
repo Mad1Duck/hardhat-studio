@@ -72,7 +72,7 @@ export function InlineWcQr({
           {loading && (
             <div className="flex flex-col items-center gap-2">
               <div className="w-5 h-5 border-2 rounded-full border-violet-300 border-t-violet-600 animate-spin" />
-              <span className="text-[9px] text-gray-400">Menghubungkan…</span>
+              <span className="text-[9px] text-gray-400">Loading...</span>
             </div>
           )}
           {error && (
@@ -90,7 +90,7 @@ export function InlineWcQr({
             <span className="text-[10px] font-semibold text-blue-300">WalletConnect v2</span>
           </div>
           <p className="text-[10px] text-muted-foreground leading-relaxed">
-            Scan QR atau klik wallet untuk deep link ke app mobile.
+            Scan QR or click wallet to deep link to mobile app.
           </p>
           <div className="grid grid-cols-4 gap-1.5">
             {Object.entries(WALLET_DEEPLINKS).map(([label, prefix]) => (
@@ -126,7 +126,7 @@ export function InlineWcQr({
       </div>
 
       {/* Manual input */}
-      <div className="flex items-center gap-2 px-3">
+      {/* <div className="flex items-center gap-2 px-3">
         <div className="flex-1 h-px bg-border/40" />
         <span className="text-[9px] text-muted-foreground uppercase tracking-wider">
           atau input manual
@@ -169,7 +169,7 @@ export function InlineWcQr({
             ✓ Verifikasi
           </button>
         </div>
-      </div>
+      </div> */}
     </div>
   );
 }

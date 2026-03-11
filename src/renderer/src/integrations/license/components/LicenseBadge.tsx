@@ -170,22 +170,30 @@ function StreamInfoTooltip({
             </div>
             {[
               {
-                label: 'Per detik',
+                label: 'Per second',
                 tok: ratePerSec,
                 usd: tokenPrice != null ? ratePerSec * tokenPrice : null,
               },
               {
-                label: 'Per menit',
+                label: 'Per minute',
                 tok: ratePerMin,
                 usd: tokenPrice != null ? ratePerMin * tokenPrice : null,
               },
               {
-                label: 'Per jam',
+                label: 'Per hour',
                 tok: ratePerHour,
                 usd: tokenPrice != null ? ratePerHour * tokenPrice : null,
               },
-              { label: 'Per hari', tok: ratePerDay, usd: usdPerDay },
-              { label: 'Per bulan', tok: ratePerMonth, usd: usdPerMonth },
+              {
+                label: 'Per day',
+                tok: ratePerDay,
+                usd: usdPerDay,
+              },
+              {
+                label: 'Per month',
+                tok: ratePerMonth,
+                usd: usdPerMonth,
+              },
             ].map(({ label, tok, usd }) => (
               <div
                 key={label}
@@ -237,7 +245,7 @@ function StreamInfoTooltip({
                 letterSpacing: '0.08em',
                 marginBottom: 6,
               }}>
-              📈 Total Dikirim (Live)
+              📈 TOTAL SENT (Live)
             </div>
             <div
               style={{
@@ -300,7 +308,7 @@ function StreamInfoTooltip({
             </div>
 
             {/* Pause/Resume */}
-            <div style={{ marginTop: 8, display: 'flex', gap: 6, pointerEvents: 'all' }}>
+            {/* <div style={{ marginTop: 8, display: 'flex', gap: 6, pointerEvents: 'all' }}>
               {activeStream?.paused ? (
                 <button
                   onClick={async (e) => {
@@ -360,7 +368,7 @@ function StreamInfoTooltip({
                   {localAction === 'pause' ? '↻ Pausing…' : '⏸ Pause Stream'}
                 </button>
               )}
-            </div>
+            </div> */}
             {localError && (
               <div
                 style={{
@@ -399,12 +407,12 @@ function StreamInfoTooltip({
                 color: accent.color,
                 fontFamily: 'monospace',
               }}>
-              ≥ ${PLAN_MIN_DEPOSIT[currentPlan === 'pro' ? 'pro' : 'basic']}/bln
+              ≥ ${PLAN_MIN_DEPOSIT[currentPlan === 'pro' ? 'pro' : 'basic']}/month
             </span>
             {usdPerMonth != null && (
               <span
                 style={{ fontSize: 9, fontWeight: 700, color: '#6ee7b7', fontFamily: 'monospace' }}>
-                ↑ {fmtUsd(usdPerMonth)}/bln ✓
+                ↑ {fmtUsd(usdPerMonth)}/month ✓
               </span>
             )}
           </div>
@@ -420,10 +428,10 @@ function StreamInfoTooltip({
               marginBottom: 8,
             }}>
             <div style={{ fontSize: 10, fontWeight: 600, color: accent.color, marginBottom: 4 }}>
-              {isDev ? '🛡️ Dev Mode — Semua fitur unlock' : '🧪 Testnet bypass aktif'}
+              {isDev ? '🛡️ Dev Mode — All feature unlocked' : '🧪 Testnet bypass activate'}
             </div>
             <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', lineHeight: 1.5 }}>
-              Stream check dilewati untuk production, buat Sablier stream ke recipient address.
+              Stream check is skipped for production, create Sablier stream to recipient address.
             </div>
           </div>
           <div

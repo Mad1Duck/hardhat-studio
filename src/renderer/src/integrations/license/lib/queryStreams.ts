@@ -150,6 +150,8 @@ export async function queryStreams(
 
   const parsedStreams: ActiveStream[] = [];
 
+  console.log(bestStreams, "=====bestStreams=====");
+
   for (const s of bestStreams) {
     if (s.recipient?.toLowerCase() !== recipientLower) {
       logs.push(makeLog('debug', `  Skip ${s.alias ?? s.id}: recipient mismatch (${s.recipient})`));

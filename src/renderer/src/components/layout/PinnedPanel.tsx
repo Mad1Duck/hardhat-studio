@@ -56,7 +56,7 @@ const PINNABLE: {
   { tab: 'explorer', label: 'Explorer', icon: Layers, color: 'text-sky-400' },
   { tab: 'nft', label: 'NFT', icon: Package, color: 'text-purple-400' },
   { tab: 'erc', label: 'ERC Std', icon: BookOpen, color: 'text-indigo-400' },
-  { tab: 'security', label: 'Security', icon: Shield, color: 'text-rose-400' },
+  // { tab: 'security', label: 'Security', icon: Shield, color: 'text-rose-400' },
   { tab: 'accounts', label: 'accounts', icon: Wallet, color: 'text-yellow-400' },
 ];
 
@@ -115,7 +115,9 @@ export default function PinnedPanel({ pinnedTab, renderPanel, onClose }: PinnedP
         <div className="flex items-center flex-shrink-0 gap-2 px-3 py-2 border-b border-border bg-card/80">
           <Pin className="w-3.5 h-3.5 text-blue-400" />
           <span className="text-xs font-semibold text-blue-300 capitalize">
-            {PINNABLE.find((p) => p.tab === pinnedTab)?.label || pinnedTab}
+            {PINNABLE.sort(({ label: labelA }, { label: labelB }) =>
+              labelA.localeCompare(labelB),
+            ).find((p) => p.tab === pinnedTab)?.label || pinnedTab}
           </span>
           <span className="text-[9px] text-muted-foreground/40 ml-1">pinned</span>
           <button

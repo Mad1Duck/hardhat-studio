@@ -172,12 +172,12 @@ const NAV_GROUPS = [
         label: 'Accounts',
         tooltip: 'View Hardhat accounts and balances',
       },
-      {
-        id: 'snapshots' as NavTab,
-        icon: Camera,
-        label: 'Snapshots',
-        tooltip: 'Save and restore EVM state snapshots',
-      },
+      // {
+      //   id: 'snapshots' as NavTab,
+      //   icon: Camera,
+      //   label: 'Snapshots',
+      //   tooltip: 'Save and restore EVM state snapshots',
+      // },
       {
         id: 'explorer' as NavTab,
         icon: Layers,
@@ -190,12 +190,12 @@ const NAV_GROUPS = [
   {
     label: 'Analysis',
     items: [
-      {
-        id: 'security' as NavTab,
-        icon: Shield,
-        label: 'Security',
-        tooltip: 'Static analysis for vulnerabilities',
-      },
+      // {
+      //   id: 'security' as NavTab,
+      //   icon: Shield,
+      //   label: 'Security',
+      //   tooltip: 'Static analysis for vulnerabilities',
+      // },
       {
         id: 'gas' as NavTab,
         icon: Fuel,
@@ -568,7 +568,7 @@ export default function Sidebar({
         </div>
         <div className="flex items-center justify-between">
           <span className="text-[10px] font-mono text-muted-foreground/30">Hardhat Studio</span>
-          <span className="text-[10px] font-mono text-muted-foreground/20">v6.0</span>
+          <span className="text-[10px] font-mono text-muted-foreground/20">v6.0.2</span>
         </div>
         <LicenseBadge onClick={() => setShowLicenseModal(true)} />
         <UpdateChecker compact />

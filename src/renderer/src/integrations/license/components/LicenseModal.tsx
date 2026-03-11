@@ -212,7 +212,7 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
           <div>
             <h2 className="text-sm font-semibold text-foreground">Hardhat Studio Subscription</h2>
             <p className="text-[10px] text-muted-foreground">
-              Plan aktif:&nbsp;
+              Active plan:&nbsp;
               <span className={cn('font-semibold', PLAN_META[currentPlan].color)}>
                 {PLAN_META[currentPlan].label}
               </span>
@@ -232,7 +232,7 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
             [
               { id: 'status', label: '📡 Status' },
               { id: 'networks', label: '🌐 Networks' },
-              { id: 'plans', label: '📋 Fitur' },
+              { id: 'plans', label: '📋 Feature' },
             ] as const
           ).map((tab) => (
             <button
@@ -259,7 +259,7 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                   <div>
                     <p className="font-semibold">Dev Mode Active</p>
                     <p className="text-emerald-400/60 mt-0.5">
-                      Semua fitur unlocked via VITE_DEV_UNLOCK=true
+                      All feature unlocked via VITE_DEV_UNLOCK=true
                     </p>
                   </div>
                 </div>
@@ -405,8 +405,8 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                             ? `${fmt.usd(activeStream.debtRaw)} ${activeStream.tokenSymbol}`
                             : '—',
                         ],
-                        ['Mulai', fmt.date(activeStream.startTime)],
-                        ['Berakhir', fmt.date(activeStream.endTime)],
+                        ['Start', fmt.date(activeStream.startTime)],
+                        // ['End', fmt.date(activeStream.endTime)],
                       ].map(([label, value]) => (
                         <div key={label} className="space-y-0.5">
                           <p
@@ -454,7 +454,7 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                   {/* Controls */}
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
-                      {activeStream?.paused ? (
+                      {/* {activeStream?.paused ? (
                         <Button
                           size="sm"
                           disabled={!!streamAction || streamActionPending}
@@ -485,13 +485,13 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                             <>⏸ Pause Stream</>
                           )}
                         </Button>
-                      )}
+                      )} */}
                       <button
                         onClick={handleRefresh}
                         disabled={refreshing}
                         className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5 rounded border border-border/40">
                         <RefreshCw className={cn('w-3 h-3', refreshing && 'animate-spin')} />
-                        {refreshing ? 'Cek…' : 'Refresh'}
+                        {refreshing ? 'Check…' : 'Refresh'}
                       </button>
                     </div>
                     {streamActionError && (
@@ -520,7 +520,7 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                     <div className="overflow-hidden border rounded-xl border-border/40">
                       <div className="px-3 py-2 border-b bg-muted/10 border-border/30">
                         <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                          🌐 Pilih Network Stream
+                          🌐 NETWORK STREAM
                         </p>
                       </div>
                       <div className="grid grid-cols-2 gap-1 p-2 overflow-y-auto max-h-48">
@@ -564,6 +564,23 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
 
                   <StepCard
                     step={1}
+                    done={false}
+                    dimmed={!isConnected}
+                    title="Create a payment Stream in Sablier"
+                    subtitle={`Stream token → ${fmt.addr(RECIPIENT_ADDRESS)}`}
+                    right={
+                      <Button
+                        size="sm"
+                        disabled={!isConnected}
+                        className="h-7 px-3 text-xs gap-1.5 bg-violet-600 hover:bg-violet-500 text-white border-0 disabled:opacity-40"
+                        onClick={openSablier}>
+                        <ExternalLink className="w-3 h-3" /> Sablier
+                      </Button>
+                    }
+                  />
+
+                  <StepCard
+                    step={2}
                     done={isConnected}
                     dimmed={false}
                     title={isConnected ? fmt.addr(walletAddress!) : 'Connect Wallet'}
@@ -619,27 +636,11 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                   )}
 
                   <StepCard
-                    step={2}
-                    done={false}
-                    dimmed={!isConnected}
-                    title="Buat Stream di Sablier"
-                    subtitle={`Stream token → ${fmt.addr(RECIPIENT_ADDRESS)}`}
-                    right={
-                      <Button
-                        size="sm"
-                        disabled={!isConnected}
-                        className="h-7 px-3 text-xs gap-1.5 bg-violet-600 hover:bg-violet-500 text-white border-0 disabled:opacity-40"
-                        onClick={openSablier}>
-                        <ExternalLink className="w-3 h-3" /> Sablier
-                      </Button>
-                    }
-                  />
-                  <StepCard
                     step={3}
                     done={false}
                     dimmed={!isConnected}
-                    title="Verifikasi & Unlock"
-                    subtitle="Klik Refresh setelah stream dibuat"
+                    title="Verify & Unlock"
+                    subtitle="Click Refresh after the stream is created"
                     right={
                       <Button
                         size="sm"
@@ -648,7 +649,7 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                         className="h-7 px-3 text-xs gap-1.5 disabled:opacity-40"
                         onClick={handleRefresh}>
                         <RefreshCw className={cn('w-3 h-3', refreshing && 'animate-spin')} />
-                        {refreshing ? 'Cek…' : 'Refresh'}
+                        {refreshing ? 'Check…' : 'Refresh'}
                       </Button>
                     }
                   />
@@ -658,7 +659,7 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                   <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-muted/20 border border-border/40">
                     <ArrowRight className="flex-shrink-0 w-3 h-3 text-muted-foreground" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-[10px] text-muted-foreground">Stream ke address ini</p>
+                      <p className="text-[10px] text-muted-foreground">Stream to this address</p>
                       <p className="text-[10px] font-mono text-foreground break-all">
                         {RECIPIENT_ADDRESS}
                       </p>
@@ -699,10 +700,10 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                       <p className={cn('text-xs font-bold', m.color)}>{m.label}</p>
                       <p className="text-[10px] font-semibold text-foreground">
                         {m.price}
-                        <span className="font-normal text-muted-foreground">/bln</span>
+                        <span className="font-normal text-muted-foreground">/month</span>
                       </p>
                       {isActive && (
-                        <div className="text-[9px] text-emerald-400 font-medium">✓ Aktif</div>
+                        <div className="text-[9px] text-emerald-400 font-medium">✓ Active</div>
                       )}
                     </div>
                   );
@@ -713,7 +714,7 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
               <div className="overflow-hidden border rounded-xl border-border/50">
                 <div className="px-3 py-2 border-b bg-muted/30 border-border/40">
                   <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                    Fitur per Plan
+                    Feature per Plan
                   </p>
                 </div>
                 <div className="overflow-y-auto divide-y divide-border/20 max-h-64">
@@ -805,7 +806,7 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
               <button
                 onClick={openSablier}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold transition-colors">
-                <ExternalLink className="w-3.5 h-3.5" /> Buat Stream di app.sablier.com
+                <ExternalLink className="w-3.5 h-3.5" /> Stream to this address at app.sablier.com
               </button>
             </div>
           )}

@@ -63,7 +63,7 @@ export function NetworkManager() {
         },
       ];
     });
-    setAddSuccess(`✓ ${customName} (${cid}) ditambahkan`);
+    setAddSuccess(`✓ ${customName} (${cid}) added`);
     setCustomName('');
     setCustomChainId('');
     setCustomEndpoint('');
@@ -77,7 +77,7 @@ export function NetworkManager() {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-          Jaringan yang Di-search
+          SEARCH NETWORK
         </p>
         <button
           onClick={async () => {
@@ -88,7 +88,7 @@ export function NetworkManager() {
           disabled={refreshing}
           className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors">
           <RefreshCw className={cn('w-2.5 h-2.5', refreshing && 'animate-spin')} />
-          {refreshing ? 'Searching…' : 'Search Ulang'}
+          {refreshing ? 'Searching…' : 'Search'}
         </button>
       </div>
 
@@ -130,7 +130,7 @@ export function NetworkManager() {
           onClick={() => setShowAdd((v) => !v)}
           className="flex items-center gap-2 w-full px-3 py-2 text-[10px] text-muted-foreground hover:text-foreground bg-muted/10 hover:bg-muted/20 transition-colors">
           <span className="text-sm">{showAdd ? '▾' : '▸'}</span>
-          <span className="font-medium">Tambah Network Custom</span>
+          <span className="font-medium">Add Custom Network</span>
           <span className="ml-auto text-[9px] opacity-50">The Graph endpoint</span>
         </button>
         {showAdd && (
@@ -160,7 +160,7 @@ export function NetworkManager() {
             <button
               onClick={handleAdd}
               className="w-full py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-[10px] font-semibold transition-colors">
-              Tambahkan & Search
+              Add & Search
             </button>
           </div>
         )}

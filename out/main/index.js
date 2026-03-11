@@ -7,6 +7,7 @@ const axios = require("axios");
 const keytar = require("keytar");
 const dotenv = require("dotenv");
 const log = require("electron-log");
+const http = require("http");
 const SERVICE = "hardhat-studio";
 async function setStorage(key, value) {
   await keytar.setPassword(SERVICE, key, JSON.stringify(value));
@@ -193,43 +194,33 @@ electron.ipcMain.handle("discord-login", async () => {
     const CLIENT_ID = process.env.DISCORD_CLIENT_ID;
     const CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
     const REDIRECT_URI = process.env.DISCORD_REDIRECT_URI;
-    await electron.session.fromPartition("oauth").clearStorageData();
-    await electron.session.fromPartition("oauth").clearCache();
     await deleteStorage("discord_access_token");
     await deleteStorage("discord_user");
     const authUrl = `https://discord.com/oauth2/authorize?client_id=${CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=identify`;
-    const authWindow = new electron.BrowserWindow({
-      width: 500,
-      height: 700,
-      webPreferences: {
-        partition: "oauth",
-        nodeIntegration: false,
-        contextIsolation: true
-      }
-    });
-    authWindow.loadURL(authUrl);
-    authWindow.webContents.on("will-navigate", async (event, newUrl) => {
-      if (!newUrl.startsWith(REDIRECT_URI)) return;
-      event.preventDefault();
-      const url = new URL(newUrl);
-      const code = url.searchParams.get("code");
+    const server = http.createServer(async (req, res) => {
       try {
+        const url = new URL(req.url, REDIRECT_URI);
+        const code = url.searchParams.get("code");
+        if (!code) return;
+        res.writeHead(200, { "Content-Type": "text/html" });
+        res.end("<h2>Login berhasil. Silakan kembali ke aplikasi.</h2>");
+        server.close();
+        const params = new URLSearchParams({
+          client_id: CLIENT_ID,
+          client_secret: CLIENT_SECRET,
+          grant_type: "authorization_code",
+          code,
+          redirect_uri: REDIRECT_URI
+        });
         const tokenRes = await axios.post(
           "https://discord.com/api/oauth2/token",
-          new URLSearchParams({
-            client_id: CLIENT_ID,
-            client_secret: CLIENT_SECRET,
-            grant_type: "authorization_code",
-            code,
-            redirect_uri: REDIRECT_URI
-          }),
+          params.toString(),
           {
             headers: {
               "Content-Type": "application/x-www-form-urlencoded"
             }
           }
         );
-        console.log(tokenRes.data, "=====tokenRes.data=====");
         const accessToken = tokenRes.data.access_token;
         const userRes = await axios.get(
           "https://discord.com/api/users/@me",
@@ -242,13 +233,14 @@ electron.ipcMain.handle("discord-login", async () => {
         const user = userRes.data;
         await setStorage("discord_access_token", accessToken);
         await setStorage("discord_user", user);
-        authWindow.close();
         resolve(user);
       } catch (err) {
-        authWindow.close();
+        server.close();
         reject(err);
       }
     });
+    server.listen(4399);
+    await electron.shell.openExternal(authUrl);
   });
 });
 electron.ipcMain.handle("wc-has-session", async () => {
