@@ -251,7 +251,7 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto">
-          {activeTab === 'status' && (
+          {import.meta.env.VITE_DEV_UNLOCK === 'true' && activeTab === 'status' && (
             <div className="p-5 space-y-4">
               {isDev && (
                 <div className="flex items-start gap-3 p-3 text-xs border rounded-xl bg-emerald-500/10 border-emerald-500/20 text-emerald-400">
