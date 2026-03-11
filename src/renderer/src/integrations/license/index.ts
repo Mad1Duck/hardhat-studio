@@ -1,11 +1,14 @@
-// ─────────────────────────────────────────────────────────────────────────────
+// 
 //  LICENSE MODULE — public API
 //  Import everything from here, not from sub-files directly.
 //
 //  Usage:
 //    import { LicenseProvider, useLicense, PLAN_CONFIG, planDailyUSD } from '@/license'
-// ─────────────────────────────────────────────────────────────────────────────
+// 
 
+
+// Provider + hook
+export { LicenseProvider, useLicense } from './LicenseProvider';
 
 // Types
 export type {
