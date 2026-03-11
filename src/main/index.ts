@@ -21,7 +21,7 @@ import { registerEvmHandlers } from './ipc/evm';
 import { registerAnalysisHandlers } from './ipc/analysis';
 
 // Constants
-const isDev = process.env.NODE_ENV === 'development' || !!process.env['ELECTRON_RENDERER_URL'];
+const isDev = process.env.VITE_NODE_ENV === 'development';
 const iconPath = app.isPackaged
   ? join(process.resourcesPath, 'build/icon.png')
   : join(__dirname, '../../build/icon.png');
@@ -84,9 +84,7 @@ function createWindow(): void {
     return { action: 'deny' };
   });
 
-  const rendererUrl = process.env['ELECTRON_RENDERER_URL'];
-  if (isDev && rendererUrl) {
-    mainWindow.loadURL(rendererUrl);
+  if (isDev) {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'));

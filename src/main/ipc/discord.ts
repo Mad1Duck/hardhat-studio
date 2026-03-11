@@ -4,7 +4,6 @@ import http from 'http';
 import { deleteStorage, getStorage, setStorage } from '../../database/storage';
 import { checkUserRoles } from '../services/discord.api.service';
 
-const isDev = process.env.NODE_ENV === 'development';
 const DEV_REDIRECT_URI = 'http://localhost:4399/callback';
 
 let resolveLogin: ((user: any) => void) | null = null;
@@ -18,7 +17,7 @@ export async function handleDiscordCallback(url: string): Promise<void> {
       rejectLogin?.(new Error('No code in callback URL'));
       return;
     }
-    const user = await exchangeToken(code, process.env.DISCORD_REDIRECT_URI ?? "hardhatstudio://callback");
+    const user = await exchangeToken(code, process.env.DISCORD_REDIRECT_URI ?? 'hardhatstudio://callback');
     resolveLogin?.(user);
   } catch (err) {
     rejectLogin?.(err);
@@ -28,7 +27,6 @@ export async function handleDiscordCallback(url: string): Promise<void> {
   }
 }
 
-// ── Token exchange helper ──────────────────────────────────────────────────────
 async function exchangeToken(code: string, redirectUri: string) {
   const params = new URLSearchParams({
     client_id: process.env.DISCORD_CLIENT_ID!,
@@ -84,9 +82,17 @@ export function registerDiscordHandlers(): void {
 
     const CLIENT_ID = process.env.DISCORD_CLIENT_ID!;
 
-    const REDIRECT_URI = process.env.DISCORD_REDIRECT_URI ?? "hardhatstudio://callback";
+    // ✅ Lazy eval — dievaluasi setelah .env sudah di-load
+    // Pakai VITE_NODE_ENV (sesuai .env kamu) karena itu yang kamu set
+    const isDev =
+      process.env.VITE_NODE_ENV === 'development';
+    const REDIRECT_URI = isDev
+      ? DEV_REDIRECT_URI
+      : (process.env.DISCORD_REDIRECT_URI ?? 'hardhatstudio://callback');
 
     console.log('[Discord] isDev:', isDev);
+    console.log('[Discord] VITE_NODE_ENV:', process.env.VITE_NODE_ENV);
+    console.log('[Discord] VITE_NODE_ENV:', process.env.VITE_NODE_ENV);
     console.log('[Discord] CLIENT_ID:', CLIENT_ID);
     console.log('[Discord] REDIRECT_URI:', REDIRECT_URI);
 
@@ -98,6 +104,8 @@ export function registerDiscordHandlers(): void {
       `&scope=identify`;
 
     return new Promise((resolve, reject) => {
+      let server: http.Server | null = null;
+
       const timeout = setTimeout(() => {
         resolveLogin = null;
         rejectLogin = null;
@@ -109,14 +117,13 @@ export function registerDiscordHandlers(): void {
         clearTimeout(timeout);
         resolveLogin = null;
         rejectLogin = null;
+        server?.close();
         if (err) reject(err);
         else resolve(user);
       };
 
-      let server: http.Server | null = null;
-
       if (isDev) {
-        // Dev: HTTP server tangkap callback
+        // Dev: HTTP server tangkap redirect dari localhost
         server = http.createServer(async (req, res) => {
           const url = new URL(req.url!, DEV_REDIRECT_URI);
           const code = url.searchParams.get('code');
@@ -137,6 +144,7 @@ export function registerDiscordHandlers(): void {
           console.log('[Discord] Listening on http://localhost:4399/callback');
         });
       } else {
+        // Production: tunggu deep link hardhatstudio://callback
         resolveLogin = (user) => done(user);
         rejectLogin = (err) => done(undefined, err);
       }

@@ -233,7 +233,6 @@ async function checkUserRoles({
     throw error;
   }
 }
-const isDev$1 = process.env.NODE_ENV === "development";
 const DEV_REDIRECT_URI = "http://localhost:4399/callback";
 let resolveLogin = null;
 let rejectLogin = null;
@@ -296,12 +295,16 @@ function registerDiscordHandlers() {
     await deleteStorage("discord_access_token");
     await deleteStorage("discord_user");
     const CLIENT_ID = process.env.DISCORD_CLIENT_ID;
-    const REDIRECT_URI = process.env.DISCORD_REDIRECT_URI ?? "hardhatstudio://callback";
-    console.log("[Discord] isDev:", isDev$1);
+    const isDev2 = process.env.VITE_NODE_ENV === "development";
+    const REDIRECT_URI = isDev2 ? DEV_REDIRECT_URI : process.env.DISCORD_REDIRECT_URI ?? "hardhatstudio://callback";
+    console.log("[Discord] isDev:", isDev2);
+    console.log("[Discord] VITE_NODE_ENV:", process.env.VITE_NODE_ENV);
+    console.log("[Discord] VITE_NODE_ENV:", process.env.VITE_NODE_ENV);
     console.log("[Discord] CLIENT_ID:", CLIENT_ID);
     console.log("[Discord] REDIRECT_URI:", REDIRECT_URI);
     const authUrl = `https://discord.com/oauth2/authorize?client_id=${CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=identify`;
     return new Promise((resolve, reject) => {
+      let server = null;
       const timeout = setTimeout(() => {
         resolveLogin = null;
         rejectLogin = null;
@@ -312,11 +315,11 @@ function registerDiscordHandlers() {
         clearTimeout(timeout);
         resolveLogin = null;
         rejectLogin = null;
+        server?.close();
         if (err) reject(err);
         else resolve(user);
       };
-      let server = null;
-      if (isDev$1) {
+      if (isDev2) {
         server = http.createServer(async (req, res) => {
           const url = new URL(req.url, DEV_REDIRECT_URI);
           const code = url.searchParams.get("code");
@@ -1385,7 +1388,7 @@ function registerAnalysisHandlers(getWin2) {
 }
 const envPath = electron.app.isPackaged ? path.join(process.resourcesPath, ".env") : path.join(__dirname, "../../.env");
 dotenv.config({ path: envPath });
-const isDev = process.env.NODE_ENV === "development" || !!process.env["ELECTRON_RENDERER_URL"];
+const isDev = process.env.VITE_NODE_ENV === "development";
 const iconPath = electron.app.isPackaged ? path.join(process.resourcesPath, "build/icon.png") : path.join(__dirname, "../../build/icon.png");
 let mainWindow = null;
 const getWin = () => mainWindow;
@@ -1431,9 +1434,7 @@ function createWindow() {
     electron.shell.openExternal(url);
     return { action: "deny" };
   });
-  const rendererUrl = process.env["ELECTRON_RENDERER_URL"];
-  if (isDev && rendererUrl) {
-    mainWindow.loadURL(rendererUrl);
+  if (isDev) {
     mainWindow.webContents.openDevTools({ mode: "detach" });
   } else {
     mainWindow.loadFile(path.join(__dirname, "../renderer/index.html"));
