@@ -115,7 +115,10 @@ const api = {
     return () => electron.ipcRenderer.removeListener("update-status", fn);
   },
   onOAuthCallback: (cb) => electron.ipcRenderer.on("oauth-callback", (_, { code }) => cb(code)),
-  offOAuthCallback: () => electron.ipcRenderer.removeAllListeners("oauth-callback")
+  offOAuthCallback: () => electron.ipcRenderer.removeAllListeners("oauth-callback"),
+  getLanIp: () => electron.ipcRenderer.invoke("get-lan-ip"),
+  checkHardhatPort: (port) => electron.ipcRenderer.invoke("check-hardhat-port", port),
+  detectHardhatNode: () => electron.ipcRenderer.invoke("detect-hardhat-node")
 };
 if (process.contextIsolated) {
   try {

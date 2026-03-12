@@ -7,6 +7,25 @@ const keytar = require("keytar");
 const log = require("electron-log");
 const child_process = require("child_process");
 const fs = require("fs");
+const os = require("os");
+const net = require("net");
+function _interopNamespaceDefault(e) {
+  const n = Object.create(null, { [Symbol.toStringTag]: { value: "Module" } });
+  if (e) {
+    for (const k in e) {
+      if (k !== "default") {
+        const d = Object.getOwnPropertyDescriptor(e, k);
+        Object.defineProperty(n, k, d.get ? d : {
+          enumerable: true,
+          get: () => e[k]
+        });
+      }
+    }
+  }
+  n.default = e;
+  return Object.freeze(n);
+}
+const net__namespace = /* @__PURE__ */ _interopNamespaceDefault(net);
 let autoUpdater = null;
 function initAutoUpdater(isDev2) {
   if (isDev2) return;
@@ -1595,6 +1614,79 @@ function registerAnalysisHandlers(getWin2) {
     }
   });
 }
+function getLanIp() {
+  const nets = os.networkInterfaces();
+  for (const name of Object.keys(nets)) {
+    for (const net2 of nets[name] ?? []) {
+      if (net2.family === "IPv4" && !net2.internal) {
+        return net2.address;
+      }
+    }
+  }
+  return null;
+}
+function checkPort(port, host = "127.0.0.1") {
+  return new Promise((resolve) => {
+    const socket = new net__namespace.Socket();
+    const timeout = 1e3;
+    socket.setTimeout(timeout);
+    socket.on("connect", () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.on("timeout", () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.on("error", () => {
+      resolve(false);
+    });
+    socket.connect(port, host);
+  });
+}
+async function isHardhatNode(port) {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "web3_clientVersion", params: [] }),
+      signal: AbortSignal.timeout(2e3)
+    });
+    const data = await res.json();
+    return typeof data.result === "string";
+  } catch {
+    return false;
+  }
+}
+function registerCollabHandlers() {
+  electron.ipcMain.handle("get-lan-ip", () => getLanIp());
+  electron.ipcMain.handle("check-hardhat-port", async (_, port) => {
+    try {
+      const isOpen = await checkPort(port);
+      if (!isOpen) return { running: false, port };
+      const isHardhat = await isHardhatNode(port);
+      return { running: isHardhat, port };
+    } catch {
+      return { running: false, port };
+    }
+  });
+  electron.ipcMain.handle("detect-hardhat-node", async () => {
+    const COMMON_PORTS = [8545, 8546, 8547, 7545, 9545];
+    for (const port of COMMON_PORTS) {
+      const isOpen = await checkPort(port);
+      if (isOpen) {
+        const isHardhat = await isHardhatNode(port);
+        if (isHardhat) {
+          return { found: true, port, rpcUrl: `http://127.0.0.1:${port}` };
+        }
+      }
+    }
+    return { found: false, port: null, rpcUrl: null };
+  });
+}
+if (process.env.HARDHAT_STUDIO_INSTANCE === "guest") {
+  electron.app.setPath("userData", path.join(electron.app.getPath("temp"), "hardhat-studio-guest"));
+}
 const { config } = require("dotenv");
 const envPath = electron.app.isPackaged ? path.join(process.resourcesPath, ".env") : path.join(__dirname, "../../.env");
 config({ path: envPath });
@@ -1603,7 +1695,8 @@ const iconPath = electron.app.isPackaged ? path.join(process.resourcesPath, "bui
 let mainWindow = null;
 const getWin = () => mainWindow;
 electron.app.setAsDefaultProtocolClient("hardhatstudio");
-const gotLock = electron.app.requestSingleInstanceLock();
+const lockId = process.env.HARDHAT_STUDIO_INSTANCE === "guest" ? "guest" : "host";
+const gotLock = electron.app.requestSingleInstanceLock({ instanceId: lockId });
 if (!gotLock) {
   electron.app.quit();
 } else {
@@ -1662,6 +1755,7 @@ function registerAllHandlers() {
   registerGitHandlers();
   registerEvmHandlers();
   registerAnalysisHandlers(getWin);
+  registerCollabHandlers();
 }
 initAutoUpdater(isDev);
 registerAllHandlers();

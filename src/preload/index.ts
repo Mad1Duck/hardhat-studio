@@ -151,6 +151,11 @@ const api = {
     ipcRenderer.on('oauth-callback', (_, { code }) => cb(code)),
   offOAuthCallback: () =>
     ipcRenderer.removeAllListeners('oauth-callback'),
+  getLanIp: (): Promise<string | null> => ipcRenderer.invoke('get-lan-ip'),
+  checkHardhatPort: (port: number): Promise<{ running: boolean; port: number; }> =>
+    ipcRenderer.invoke('check-hardhat-port', port),
+  detectHardhatNode: (): Promise<{ found: boolean; port: number | null; rpcUrl: string | null; }> =>
+    ipcRenderer.invoke('detect-hardhat-node'),
 };
 
 if (process.contextIsolated) {

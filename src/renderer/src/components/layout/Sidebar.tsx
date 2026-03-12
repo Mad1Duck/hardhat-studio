@@ -31,7 +31,6 @@ import {
   MessageSquare,
   Network,
   Package,
-  Play,
   Radio,
   Rocket,
   RotateCcw,
@@ -40,11 +39,12 @@ import {
   Settings,
   Shield,
   ShieldCheck,
-  Square,
   Terminal,
   RefreshCw,
   Trash2,
   Wallet,
+  Users,
+  X,
   Zap,
 } from 'lucide-react';
 
@@ -63,8 +63,31 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   zap: Zap,
 };
 
+const GUEST_ALLOWED_TABS: NavTab[] = [
+  'collab',
+  'deployed',
+  'interact',
+  'abis',
+  'frontend',
+  'events',
+  'abi-compat',
+  'explorer',
+  'tx-graph',
+];
+
+const HOST_ALLOWED_TABS: NavTab[] = [
+  'collab',
+  'commands',
+  'terminal',
+  'deployed',
+  'interact',
+  'abis',
+  'network',
+  'debug',
+];
+
 interface Props {
-  projectInfo: ProjectInfo;
+  projectInfo: ProjectInfo | null;
   projectPath: string;
   commands: CommandConfig[];
   processStates: Map<string, ProcessState>;
@@ -73,6 +96,9 @@ interface Props {
   abisCount: number;
   deployedCount: number;
   errorCount: number;
+  collabMode: 'none' | 'host' | 'guest';
+  onCollabExit: () => void;
+  onExitProject: () => void;
   onTabChange: (tab: NavTab) => void;
   onCommandSelect: (id: string) => void;
   onChangeProject: () => void;
@@ -114,7 +140,6 @@ const NAV_GROUPS = [
       },
     ],
   },
-
   {
     label: 'Contracts',
     items: [
@@ -156,7 +181,6 @@ const NAV_GROUPS = [
       },
     ],
   },
-
   {
     label: 'Network',
     items: [
@@ -186,16 +210,9 @@ const NAV_GROUPS = [
       },
     ],
   },
-
   {
     label: 'Analysis',
     items: [
-      // {
-      //   id: 'security' as NavTab,
-      //   icon: Shield,
-      //   label: 'Security',
-      //   tooltip: 'Static analysis for vulnerabilities',
-      // },
       {
         id: 'gas' as NavTab,
         icon: Fuel,
@@ -228,7 +245,6 @@ const NAV_GROUPS = [
       },
     ],
   },
-
   {
     label: 'Simulation',
     items: [
@@ -252,7 +268,6 @@ const NAV_GROUPS = [
       },
     ],
   },
-
   {
     label: 'Development',
     items: [
@@ -282,7 +297,6 @@ const NAV_GROUPS = [
       },
     ],
   },
-
   {
     label: 'Project',
     items: [
@@ -317,7 +331,7 @@ const NAV_GROUPS = [
         tooltip: 'Track audit findings',
       },
       {
-        id: 'notes',
+        id: 'notes' as NavTab,
         icon: FileText,
         label: 'Notes',
         tooltip: 'Project notes',
@@ -342,7 +356,19 @@ const NAV_GROUPS = [
       },
     ],
   },
+  {
+    label: 'Collab',
+    items: [
+      {
+        id: 'collab' as NavTab,
+        icon: Users,
+        label: 'Live Collab',
+        tooltip: 'Share your network & contracts with frontend devs in real-time',
+      },
+    ],
+  },
 ];
+
 export default function Sidebar({
   projectInfo,
   projectPath,
@@ -353,6 +379,9 @@ export default function Sidebar({
   abisCount,
   deployedCount,
   errorCount,
+  collabMode,
+  onCollabExit,
+  onExitProject,
   onTabChange,
   onCommandSelect,
   onChangeProject,
@@ -380,76 +409,133 @@ export default function Sidebar({
   const toggleGroup = (label: string) => setCollapsedGroups((p) => ({ ...p, [label]: !p[label] }));
 
   const frameworkColor =
-    projectInfo.framework === 'ethers'
+    projectInfo?.framework === 'ethers'
       ? 'text-blue-400'
-      : projectInfo.framework === 'viem'
+      : projectInfo?.framework === 'viem'
         ? 'text-purple-400'
         : 'text-muted-foreground/40';
 
+  const filteredGroups =
+    collabMode === 'guest'
+      ? NAV_GROUPS.map((group) => ({
+          ...group,
+          items: group.items.filter((item) => GUEST_ALLOWED_TABS.includes(item.id as NavTab)),
+        })).filter((group) => group.items.length > 0)
+      : NAV_GROUPS;
+
   return (
     <aside className="w-[220px] flex-shrink-0 h-full flex flex-col bg-card border-r border-border overflow-hidden">
-      {/* Project Header */}
-      <div className="px-3 pt-3 pb-2 border-b border-border">
-        <div className="flex items-center min-w-0 gap-2">
-          <div className="flex items-center justify-center flex-shrink-0 border rounded-md w-7 h-7 bg-orange-500/15 border-orange-500/25">
-            <Cpu className="w-3.5 h-3.5 text-orange-400" />
+      {/* Collab mode banner */}
+      {collabMode !== 'none' && (
+        <div className="flex items-center justify-between flex-shrink-0 px-3 py-2 border-b bg-blue-500/10 border-blue-500/20">
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+            <span className="text-[10px] font-semibold text-blue-400 uppercase tracking-wider">
+              {collabMode === 'guest' ? 'Guest Mode' : 'Host Mode'}
+            </span>
           </div>
+          <button
+            onClick={onCollabExit}
+            className="text-[10px] text-muted-foreground hover:text-red-400 transition-colors">
+            Exit
+          </button>
+        </div>
+      )}
 
-          <div className="flex-1 min-w-0">
-            <div className="text-xs font-semibold truncate text-foreground">{projectInfo.name}</div>
-            <div
-              className="text-[10px] text-muted-foreground font-mono truncate"
-              title={projectPath}>
-              {truncate(projectPath, 22)}
+      {/* Project Header */}
+      {projectInfo && collabMode !== 'guest' && (
+        <div className="flex-shrink-0 px-3 pt-3 pb-2 border-b border-border">
+          <div className="flex items-center min-w-0 gap-2">
+            <div className="flex items-center justify-center flex-shrink-0 border rounded-md w-7 h-7 bg-orange-500/15 border-orange-500/25">
+              <Cpu className="w-3.5 h-3.5 text-orange-400" />
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-semibold truncate text-foreground">
+                {projectInfo.name}
+              </div>
+              <div
+                className="text-[10px] text-muted-foreground font-mono truncate"
+                title={projectPath}>
+                {truncate(projectPath, 22)}
+              </div>
+            </div>
+
+            <div className="flex items-center flex-shrink-0 gap-1">
+              <ThemeToggle size="sm" />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={onChangeProject}
+                    className="flex-shrink-0 w-6 h-6">
+                    <RotateCcw className="w-3 h-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Change project</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={onExitProject}
+                    className="flex-shrink-0 w-6 h-6 text-rose-400/50 hover:text-rose-400 hover:bg-rose-500/10">
+                    <X className="w-3 h-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="text-rose-400">Exit project</TooltipContent>
+              </Tooltip>
             </div>
           </div>
 
-          <div className="flex items-center flex-shrink-0 gap-1">
-            <ThemeToggle size="sm" />
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={onChangeProject}
-                  className="flex-shrink-0 w-6 h-6">
-                  <RotateCcw className="w-3 h-3" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Change project</TooltipContent>
-            </Tooltip>
+          {/* Meta badges */}
+          <div className="flex flex-wrap gap-1 mt-2">
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-secondary text-[10px] font-mono text-muted-foreground">
+              <Package className="w-2.5 h-2.5" />
+              {projectInfo.packageManager}
+            </span>
+
+            {projectInfo.framework && (
+              <span
+                className={cn(
+                  'px-1.5 py-0.5 rounded bg-secondary text-[10px] font-mono',
+                  frameworkColor,
+                )}>
+                {projectInfo.framework}
+              </span>
+            )}
+
+            {runningCount > 0 && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[10px] font-mono text-emerald-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
+                {runningCount} running
+              </span>
+            )}
           </div>
         </div>
+      )}
 
-        {/* Meta badges */}
-        <div className="flex flex-wrap gap-1 mt-2">
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-secondary text-[10px] font-mono text-muted-foreground">
-            <Package className="w-2.5 h-2.5" />
-            {projectInfo.packageManager}
-          </span>
-
-          {projectInfo.framework && (
-            <span
-              className={cn(
-                'px-1.5 py-0.5 rounded bg-secondary text-[10px] font-mono',
-                frameworkColor,
-              )}>
-              {projectInfo.framework}
-            </span>
-          )}
-
-          {runningCount > 0 && (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/10 text-[10px] font-mono text-emerald-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
-              {runningCount} running
-            </span>
-          )}
+      {/* Guest header  */}
+      {collabMode === 'guest' && (
+        <div className="flex-shrink-0 px-3 py-3 border-b border-border">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center justify-center flex-shrink-0 border rounded-md w-7 h-7 bg-blue-500/15 border-blue-500/25">
+              <Users className="w-3.5 h-3.5 text-blue-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-semibold text-foreground">Guest Session</div>
+              <div className="text-[10px] text-muted-foreground font-mono">synced from host</div>
+            </div>
+            <ThemeToggle size="sm" />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Navigation */}
       <nav className="flex-1 py-1 overflow-y-auto">
-        {NAV_GROUPS.map((group) => (
+        {filteredGroups.map((group) => (
           <div key={group.label}>
             <button
               className="flex items-center gap-1.5 w-full px-3 py-1 text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/40"
@@ -465,14 +551,13 @@ export default function Sidebar({
 
             {!collapsedGroups[group.label] &&
               group.items.map(({ id, icon: Icon, label, tooltip }) => {
-                const badge = getBadge(id as any);
-
+                const badge = getBadge(id as NavTab);
                 return (
                   <div key={id} className="relative flex items-center group/nav">
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <button
-                          onClick={() => onTabChange(id as any)}
+                          onClick={() => onTabChange(id as NavTab)}
                           className={cn(
                             'flex items-center gap-2.5 flex-1 px-3 py-1.5 text-xs transition-all relative',
                             activeTab === id
@@ -482,11 +567,8 @@ export default function Sidebar({
                           {activeTab === id && (
                             <span className="absolute left-0 top-1 bottom-1 w-0.5 rounded-r bg-orange-500" />
                           )}
-
                           <Icon className="w-3.5 h-3.5 flex-shrink-0" />
-
                           <span className="flex-1 font-medium text-left">{label}</span>
-
                           {badge > 0 && (
                             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-orange-500/10 text-orange-400/80">
                               {badge}
@@ -498,6 +580,7 @@ export default function Sidebar({
                         {tooltip}
                       </TooltipContent>
                     </Tooltip>
+
                     {id === 'abis' && (
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -522,57 +605,60 @@ export default function Sidebar({
         ))}
       </nav>
 
-      {/* Footer - Workspace controls */}
-      <div className="border-t border-border px-3 py-2 space-y-1.5">
-        <div className="flex items-center gap-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1 h-6 text-[10px] gap-1 truncate"
-                onClick={onSaveWorkspace}>
-                <Save className="w-2.5 h-2.5 flex-shrink-0" /> Save
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              Save entire workspace state (contracts, history, settings)
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1 h-6 text-[10px] gap-1 truncate"
-                onClick={onLoadWorkspace}>
-                <FolderOpen className="w-2.5 h-2.5 flex-shrink-0" /> Load
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">Load a saved workspace</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="flex-shrink-0 w-6 h-6 text-rose-400/50 hover:text-rose-400 hover:bg-rose-500/10"
-                onClick={onResetState}>
-                <Trash2 className="w-3 h-3" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="text-rose-400">
-              Reset all state to default
-            </TooltipContent>
-          </Tooltip>
+      {/* Footer - Workspace controls — hide for guest */}
+      {collabMode !== 'guest' && (
+        <div className="border-t border-border px-3 py-2 space-y-1.5 flex-shrink-0">
+          <div className="flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 h-6 text-[10px] gap-1 truncate"
+                  onClick={onSaveWorkspace}>
+                  <Save className="w-2.5 h-2.5 flex-shrink-0" /> Save
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                Save entire workspace state (contracts, history, settings)
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 h-6 text-[10px] gap-1 truncate"
+                  onClick={onLoadWorkspace}>
+                  <FolderOpen className="w-2.5 h-2.5 flex-shrink-0" /> Load
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">Load a saved workspace</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="flex-shrink-0 w-6 h-6 text-rose-400/50 hover:text-rose-400 hover:bg-rose-500/10"
+                  onClick={onResetState}>
+                  <Trash2 className="w-3 h-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-rose-400">
+                Reset all state to default
+              </TooltipContent>
+            </Tooltip>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-mono text-muted-foreground/30">Hardhat Studio</span>
+            <span className="text-[10px] font-mono text-muted-foreground/20">v7.0.1</span>
+          </div>
+          <LicenseBadge onClick={() => setShowLicenseModal(true)} />
+          <UpdateChecker compact />
         </div>
-        <div className="flex items-center justify-between">
-          <span className="text-[10px] font-mono text-muted-foreground/30">Hardhat Studio</span>
-          <span className="text-[10px] font-mono text-muted-foreground/20">v7.0.1</span>
-        </div>
-        <LicenseBadge onClick={() => setShowLicenseModal(true)} />
-        <UpdateChecker compact />
-      </div>
+      )}
+
       <DiscordLoginButton />
       {showLicenseModal && <LicenseModal onClose={() => setShowLicenseModal(false)} />}
     </aside>

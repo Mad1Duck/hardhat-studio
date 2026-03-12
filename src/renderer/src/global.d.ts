@@ -101,6 +101,11 @@ declare global {
       downloadUpdate: () => Promise<boolean>;
       installUpdate: () => Promise<boolean>;
       onUpdateStatus: (cb: (event: UpdateStatusEvent) => void) => () => void;
+
+      // ── Colaboration ─────────────────────────────────────────────────────────
+      getLanIp: () => Promise<string | null>;
+      checkHardhatPort: (port: number) => Promise<{ running: boolean; port: number; }>;
+      detectHardhatNode: () => Promise<{ found: boolean; port: number | null; rpcUrl: string | null; }>;
     };
   }
 }

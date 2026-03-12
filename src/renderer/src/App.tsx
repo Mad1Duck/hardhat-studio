@@ -55,6 +55,7 @@ import ERC20TokenReader from './components/panels/ERC20TokenReader';
 import { UpdateChecker } from './components/UpdateChecker';
 import { DiscordUser } from './integrations/discord/types/discord.type';
 import { LicenseGate, useLicense } from './integrations/license';
+import CollabPanel from './components/panels/CollabPanel';
 
 type UpdateStatusEvent = {
   type: 'checking' | 'available' | 'not-available' | 'download-progress' | 'downloaded' | 'error';
@@ -128,6 +129,7 @@ const DEFAULT_COMMANDS: CommandConfig[] = [
 ];
 
 export default function App() {
+  const [collabMode, setCollabMode] = useState<'none' | 'host' | 'guest'>('none');
   const [projectPath, setProjectPath] = useState<string | null>(() => {
     try {
       return localStorage.getItem('lastProject');
@@ -318,7 +320,10 @@ export default function App() {
     const folder = await window.api.selectFolder();
     if (!folder) return;
     const info = await loadProject(folder);
-    if (info.valid) setActiveTab('commands');
+    if (info.valid) {
+      setCollabMode('none');
+      setActiveTab('commands');
+    }
   }, [loadProject]);
 
   const handleRunCommand = useCallback(
@@ -365,6 +370,73 @@ export default function App() {
     [projectPath, commands],
   );
 
+  // ── Collab tab change — set mode based on tab ──
+  const handleCollabTabChange = useCallback(
+    (tab: NavTab) => {
+      if (tab === 'collab' && collabMode === 'none') {
+      }
+      setActiveTab(tab);
+    },
+    [collabMode],
+  );
+
+  // ── Collab exit — clear mode and received state ──
+  const handleCollabExit = useCallback(() => {
+    setCollabMode('none');
+    setActiveTab('commands');
+    if (collabMode === 'guest') {
+      setDeployedContracts([]);
+      setAbis([]);
+      setRpcUrl('http://127.0.0.1:8545');
+      setTxHistory([]);
+    }
+    if (collabMode === 'host') {
+      setCommands((prev) =>
+        prev.map((c) => (c.id === 'node' ? { ...c, command: 'npx hardhat node' } : c)),
+      );
+    }
+  }, [collabMode]);
+
+  // ── Exit project — clear all state and go back to project selector ──
+  const handleExitProject = useCallback(() => {
+    if (
+      !confirm('Exit project? This will stop all running processes and clear the current session.')
+    )
+      return;
+
+    // Stop all running processes
+    processStates.forEach((_, id) => {
+      window.api.stopCommand(id).catch(() => {});
+    });
+
+    // Clear all state
+    setProjectPath(null);
+    setProjectInfo(null);
+    setDeployedContracts([]);
+    setAbis([]);
+    setSelectedAbi(null);
+    setSourceFiles([]);
+    setTxHistory([]);
+    setAllLogs([]);
+    setRpcUrl('http://127.0.0.1:8545');
+    setSelectedPrivateKey('');
+    setPinnedTab(null);
+    setActiveTab('commands');
+    setCollabMode('none');
+    setCommands(DEFAULT_COMMANDS);
+    setProcessStates(
+      new Map(DEFAULT_COMMANDS.map((c) => [c.id, { status: 'idle' as const, logs: [] }])),
+    );
+
+    // Clear localStorage
+    try {
+      localStorage.removeItem('lastProject');
+    } catch {}
+    try {
+      localStorage.removeItem('deployedContracts');
+    } catch {}
+  }, [processStates]);
+
   const handleRunTerminalCmd = useCallback(
     async (cmd: string) => {
       if (!projectPath) return;
@@ -407,8 +479,76 @@ export default function App() {
     setCommands((prev) => prev.map((c) => (c.id === id ? { ...c, ...updates } : c)));
   }, []);
 
+  const handleRunCollabNode = useCallback(async () => {
+    // Use projectPath if available, fallback to '.' so node can run without a project open
+    const cwd = projectPath ?? '.';
+
+    const nodeState = processStates.get('node');
+    if (nodeState?.status === 'running') {
+      await window.api.stopCommand('node');
+      await new Promise((r) => setTimeout(r, 800));
+    }
+
+    setCommands((prev) =>
+      prev.map((c) =>
+        c.id === 'node' ? { ...c, command: 'npx hardhat node --hostname 0.0.0.0' } : c,
+      ),
+    );
+
+    setProcessStates((prev) => {
+      const next = new Map(prev);
+      next.set('node', {
+        status: 'running',
+        logs: [
+          {
+            id: crypto.randomUUID(),
+            type: 'system',
+            data: '$ npx hardhat node --hostname 0.0.0.0',
+            timestamp: Date.now(),
+            level: 'info',
+          },
+        ],
+        startedAt: Date.now(),
+      });
+      return next;
+    });
+
+    const result = await window.api.runCommand({
+      id: 'node',
+      command: 'npx hardhat node --hostname 0.0.0.0',
+      cwd,
+    });
+
+    if (!result.success) {
+      setProcessStates((prev) => {
+        const next = new Map(prev);
+        next.set('node', {
+          status: 'error',
+          logs: [
+            {
+              id: crypto.randomUUID(),
+              type: 'system',
+              data: `✗ Failed to start: ${result.error}`,
+              timestamp: Date.now(),
+              level: 'error',
+            },
+          ],
+          error: result.error,
+        });
+        return next;
+      });
+    }
+  }, [projectPath, processStates]);
+
+  const handleEndCollabNode = useCallback(() => {
+    setCommands((prev) =>
+      prev.map((c) => (c.id === 'node' ? { ...c, command: 'npx hardhat node' } : c)),
+    );
+  }, []);
+
+  const isNodeRunning = processStates.get('node')?.status === 'running';
+
   const handleSaveWorkspace = useCallback(async () => {
-    // Collect all panel localStorage state keys to bundle into workspace
     const localKeys = [
       'hhs_scenarios',
       'docRefs',
@@ -447,8 +587,7 @@ export default function App() {
     };
     const path = await window.api.saveWorkspace(workspace);
     if (path) {
-      alert(`✓ Workspace saved to:
-${path}`);
+      alert(`✓ Workspace saved to:\n${path}`);
     }
   }, [
     projectPath,
@@ -476,7 +615,6 @@ ${path}`);
     } | null;
     if (!ws) return;
 
-    // Restore localStorage state first (so panels pick it up on mount)
     if (ws.localData) {
       Object.entries(ws.localData).forEach(([k, v]) => {
         try {
@@ -501,7 +639,7 @@ ${path}`);
       )
     )
       return;
-    // Clear all localStorage keys used by panels
+
     const clearKeys = [
       'deployedContracts',
       'commands',
@@ -523,7 +661,6 @@ ${path}`);
       } catch {}
     });
 
-    // Reset all state
     setDeployedContracts([]);
     setTxHistory([]);
     setAllLogs([]);
@@ -535,7 +672,6 @@ ${path}`);
       new Map(DEFAULT_COMMANDS.map((c) => [c.id, { status: 'idle' as const, logs: [] }])),
     );
 
-    // Stop all running processes
     processStates.forEach((_, id) => {
       window.api.stopCommand(id).catch(() => {});
     });
@@ -550,13 +686,47 @@ ${path}`);
     await window.api.generateDocs(abis, projectInfo.name);
   }, [abis, projectInfo]);
 
-  // ── Panel renderer (used for both main + pinned) ──
+  const handleGuestJoin = useCallback(() => setCollabMode('guest'), []);
+  const handleHostStart = useCallback(() => setCollabMode('host'), []);
+  const handleReceiveContracts = useCallback((contracts: unknown[]) => {
+    setDeployedContracts(contracts as DeployedContract[]);
+  }, []);
+  const handleReceiveAbis = useCallback((received: unknown[]) => {
+    setAbis(received as ContractAbi[]);
+  }, []);
+  const handleReceiveRpcUrl = useCallback((url: string) => {
+    setRpcUrl(url);
+  }, []);
+  const handleReceiveTxHistory = useCallback((history: unknown[]) => {
+    setTxHistory(history as TxRecord[]);
+  }, []);
+
+  const renderCollabPanel = () => (
+    <CollabPanel
+      onEndCollabNode={handleEndCollabNode}
+      onRunCollabNode={handleRunCollabNode}
+      isNodeRunning={isNodeRunning}
+      deployedContracts={deployedContracts}
+      abis={abis}
+      rpcUrl={rpcUrl}
+      txHistory={txHistory}
+      projectName={projectInfo?.name ?? ''}
+      onGuestJoin={handleGuestJoin}
+      onHostStart={handleHostStart}
+      onReceiveContracts={handleReceiveContracts}
+      onReceiveAbis={handleReceiveAbis}
+      onReceiveRpcUrl={handleReceiveRpcUrl}
+      onReceiveTxHistory={handleReceiveTxHistory}
+    />
+  );
+
   const { can } = useLicense();
   const renderPanel = (tab: NavTab) => {
     switch (tab) {
       case 'commands':
         return (
           <CommandPanel
+            onEndCollabNode={handleEndCollabNode}
             commands={commands}
             processStates={processStates}
             activeCommandId={activeCommandId}
@@ -757,9 +927,7 @@ ${path}`);
             <ProxyInspectorPanel
               rpcUrl={rpcUrl}
               deployedContracts={deployedContracts}
-              onNavigateToInteract={() => {
-                setActiveTab('interact');
-              }}
+              onNavigateToInteract={() => setActiveTab('interact')}
             />
           </LicenseGate>
         );
@@ -867,7 +1035,7 @@ ${path}`);
       case 'events':
         return (
           <LicenseGate feature="event_schema">
-            <EventSchemaAnalyzer abis={abis} projectPath={projectPath ?? ''} />
+            <EventSchemaAnalyzer abis={abis} projectPath={projectPath ?? ''} rpcUrl={rpcUrl} />
           </LicenseGate>
         );
       case 'abi-compat':
@@ -894,15 +1062,85 @@ ${path}`);
             <ERC20TokenReader rpcUrl={rpcUrl} deployedContracts={deployedContracts} />
           </LicenseGate>
         );
+      case 'collab':
+        // Handled outside renderPanel to keep component mounted
+        return null;
       default:
         return null;
     }
   };
 
+  // ── Pre-project: collab or project selector ──
   if (!projectPath || !projectInfo?.valid) {
-    return <ProjectSelector onSelect={handleSelectProject} lastProject={projectPath} />;
+    // Show full app layout when collab mode is active OR user navigated to collab tab
+    if (activeTab === 'collab' || collabMode !== 'none') {
+      return (
+        <div className="flex w-screen h-screen overflow-hidden bg-background">
+          <Sidebar
+            projectInfo={null}
+            projectPath=""
+            commands={commands}
+            processStates={processStates}
+            activeTab={activeTab}
+            activeCommandId={activeCommandId}
+            abisCount={abis.length}
+            deployedCount={deployedContracts.length}
+            errorCount={0}
+            collabMode={collabMode}
+            onCollabExit={() => {
+              handleCollabExit();
+              setActiveTab('collab');
+            }}
+            onExitProject={handleExitProject}
+            onTabChange={handleCollabTabChange}
+            onCommandSelect={(id) => {
+              setActiveCommandId(id);
+              setActiveTab('commands');
+            }}
+            onChangeProject={handleSelectProject}
+            onRunCommand={handleRunCommand}
+            onStopCommand={handleStopCommand}
+            onRefreshAbis={() => {}}
+            onSaveWorkspace={handleSaveWorkspace}
+            onLoadWorkspace={handleLoadWorkspace}
+            onResetState={handleResetState}
+          />
+          <main className="flex flex-1 min-w-0 overflow-hidden">
+            <div
+              className="flex-1 min-w-0 overflow-hidden"
+              style={{ display: 'flex', flexDirection: 'column' }}>
+              {/* CollabPanel always mounted when collab active */}
+              <div
+                style={{
+                  display: activeTab === 'collab' ? 'flex' : 'none',
+                  height: '100%',
+                  flexDirection: 'column',
+                }}>
+                {renderCollabPanel()}
+              </div>
+              {/* Other panels */}
+              {activeTab !== 'collab' && (
+                <div style={{ height: '100%' }}>{renderPanel(activeTab)}</div>
+              )}
+            </div>
+          </main>
+        </div>
+      );
+    }
+
+    return (
+      <ProjectSelector
+        onSelect={handleSelectProject}
+        lastProject={projectPath}
+        onJoinCollab={() => {
+          setCollabMode('guest');
+          setActiveTab('collab');
+        }}
+      />
+    );
   }
 
+  // ── Main app ──
   return (
     <div className="flex flex-col w-screen h-screen overflow-hidden bg-background">
       <UpdateChecker />
@@ -917,7 +1155,10 @@ ${path}`);
           abisCount={abis.length}
           deployedCount={deployedContracts.length}
           errorCount={allLogs.filter((l) => l.level === 'error').length}
-          onTabChange={setActiveTab}
+          collabMode={collabMode}
+          onCollabExit={handleCollabExit}
+          onExitProject={handleExitProject}
+          onTabChange={handleCollabTabChange}
           onCommandSelect={(id) => {
             setActiveCommandId(id);
             setActiveTab('commands');
@@ -933,7 +1174,32 @@ ${path}`);
           onResetState={handleResetState}
         />
         <main className="relative flex flex-1 min-w-0 overflow-hidden">
-          <div className="flex-1 min-w-0 overflow-hidden">{renderPanel(activeTab)}</div>
+          <div className="flex-1 min-w-0 overflow-hidden">
+            {/* CollabPanel stays mounted always when collab mode active — prevents disconnect on tab switch */}
+            {collabMode !== 'none' && (
+              <div
+                style={{
+                  display: activeTab === 'collab' ? 'flex' : 'none',
+                  height: '100%',
+                  flexDirection: 'column',
+                }}>
+                {renderCollabPanel()}
+              </div>
+            )}
+            {/* Render other panels normally, hide when collab panel is showing */}
+            <div
+              style={{
+                display: activeTab !== 'collab' ? 'flex' : 'none',
+                height: '100%',
+                flexDirection: 'column',
+              }}>
+              {renderPanel(activeTab)}
+            </div>
+            {/* Collab tab when no active session yet — normal mount/unmount is fine */}
+            {collabMode === 'none' && activeTab === 'collab' && (
+              <div style={{ height: '100%' }}>{renderCollabPanel()}</div>
+            )}
+          </div>
           <PinnedPanel
             pinnedTab={pinnedTab}
             renderPanel={renderPanel}

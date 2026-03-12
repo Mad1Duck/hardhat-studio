@@ -142,11 +142,12 @@ export default function ContractInteract({
   projectPath,
   projectInfo,
 }: Props) {
+  console.log(defaultRpcUrl, '=====defaultRpcUrl=====', deployedContracts);
+
   const [rpcUrl, setRpcUrl] = useState(defaultRpcUrl);
   const [address, setAddress] = useState('');
   const [gasEstimates, setGasEstimates] = useState<Map<string, string>>(new Map());
   const [estimating, setEstimating] = useState<string | null>(null);
-  // Auto-detect deployed address when selected ABI changes
   useEffect(() => {
     if (!selectedAbi) return;
     const match = deployedContracts.find(

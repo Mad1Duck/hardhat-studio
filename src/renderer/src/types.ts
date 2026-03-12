@@ -80,10 +80,8 @@ export interface DeployedContract {
   constructorArgs?: Record<string, string>;
   chainId?: number;
   gasUsed?: string;
-  /** Deployment version — increments each time the same contract is redeployed to same network */
   version?: number;
-  /** Previous deployment snapshots (address + timestamp) for history tracking */
-  previousVersions?: Array<{ version: number; address: string; txHash?: string; deployedAt: number }>;
+  previousVersions?: Array<{ version: number; address: string; txHash?: string; deployedAt: number; }>;
 }
 
 export interface TxRecord {
@@ -317,7 +315,8 @@ export type NavTab =
   | 'abi-compat'
   | 'tx-graph'
   | 'erc20'
-  | 'notes';
+  | 'notes'
+  | 'collab';
 
 export interface ScheduledTask {
   id: string;

@@ -1,7 +1,15 @@
 import { app, shell, BrowserWindow } from 'electron';
 import { join } from 'path';
 
+
+if (process.env.HARDHAT_STUDIO_INSTANCE === 'guest') {
+  app.setPath('userData', join(app.getPath('temp'), 'hardhat-studio-guest'));
+}
+
+
 const { config } = require('dotenv');
+
+
 const envPath = app.isPackaged
   ? join(process.resourcesPath, '.env')
   : join(__dirname, '../../.env');
@@ -18,6 +26,7 @@ import { registerFilesystemHandlers } from './ipc/filesystem';
 import { registerGitHandlers } from './ipc/git';
 import { registerEvmHandlers } from './ipc/evm';
 import { registerAnalysisHandlers } from './ipc/analysis';
+import { registerCollabHandlers } from './ipc/collab';
 
 // Constants
 const isDev = !app.isPackaged;
@@ -33,7 +42,9 @@ const getWin = () => mainWindow;
 app.setAsDefaultProtocolClient('hardhatstudio');
 
 // Windows / Linux: handle deep link via second-instance
-const gotLock = app.requestSingleInstanceLock();
+const lockId = process.env.HARDHAT_STUDIO_INSTANCE === 'guest' ? 'guest' : 'host';
+const gotLock = app.requestSingleInstanceLock({ instanceId: lockId } as any);
+
 if (!gotLock) {
   app.quit();
 } else {
@@ -101,6 +112,7 @@ function registerAllHandlers(): void {
   registerGitHandlers();
   registerEvmHandlers();
   registerAnalysisHandlers(getWin);
+  registerCollabHandlers();
 }
 
 // App lifecycle
