@@ -1,10 +1,13 @@
 import { useState, ReactNode } from 'react';
-import { Droplets } from 'lucide-react';
+import { Droplets, MessageCircle } from 'lucide-react';
 import { useLicense, Feature, PLAN_META } from '@/integrations/license';
 import { Button } from '../../../components/ui/button';
 import { cn } from '@/lib/utils';
 import { PlanIcon } from './ui/Primitives';
 import { LicenseModal } from './LicenseModal';
+import { SocialIcon } from 'react-social-icons';
+
+const DISCORD_USERNAME = 'raihanard';
 
 export function LicenseGate({
   feature,
@@ -61,7 +64,7 @@ export function LicenseGate({
               : `Upgrade to Basic to unlock this feature (stream ≥ $${PLAN_META.basic.price}/month).`}
           </p>
           <p className="text-[10px] text-muted-foreground/50">
-            Plan kamu Your plan now:{' '}
+            Your plan now:{' '}
             <span className={cn('font-semibold', PLAN_META[currentPlan].color)}>
               {PLAN_META[currentPlan].label}
             </span>
@@ -80,8 +83,38 @@ export function LicenseGate({
           <Droplets className="w-3.5 h-3.5" />
           Upgrade {meta.label}
         </Button>
-      </div>
 
+        {/* Discord contact */}
+        <div className="flex flex-col items-center w-full gap-2">
+          <p className="text-[10px] text-muted-foreground/60 leading-relaxed max-w-[210px]">
+            Contact me on Discord to get access — I'll set up your role manually.
+          </p>
+          <a
+            href={`https://discord.com/users/892971875242737694`}
+            target="_blank"
+            rel="noreferrer"
+            className="w-full">
+            <Button
+              size="sm"
+              className={cn(
+                'gap-2 text-white border-0 shadow-lg transition-all hover:-translate-y-px',
+                'bg-[#5865F2] hover:bg-[#4752C4] shadow-lg shadow-[#5865F2]/30',
+              )}>
+              <div className="w-4 h-4">
+                <SocialIcon url="https://discord.com" style={{ width: '100%', height: '100%' }} />
+              </div>
+              Contact @{DISCORD_USERNAME}
+            </Button>
+            {/* <Button
+              size="sm"
+              variant="outline"
+              className="w-full gap-2 text-indigo-400 transition-all border-indigo-500/30 hover:bg-indigo-500/10 hover:text-indigo-300 hover:border-indigo-400/50">
+              <MessageCircle className="w-3.5 h-3.5" />
+              Contact @{DISCORD_USERNAME}
+            </Button> */}
+          </a>
+        </div>
+      </div>
       {showModal && <LicenseModal onClose={() => setShowModal(false)} />}
     </>
   );
