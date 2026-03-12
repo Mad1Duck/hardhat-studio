@@ -12,6 +12,7 @@ export function useDiscordAuth() {
   const [roleChecking, setRoleChecking] = useState(false);
   const { refreshDiscordStatus } = useLicense();
 
+  // ── Check roles ──────────────────────────────────────────────────────────────
   const checkRoles = useCallback(async (u: DiscordUser | null) => {
     if (!u?.id || DISCORD_RULES.length === 0) {
       setDiscordPlan('free');
@@ -29,36 +30,34 @@ export function useDiscordAuth() {
     }
   }, []);
 
+  // ── Restore session on mount ─────────────────────────────────────────────────
   useEffect(() => {
     window.api.getUser()
       .then(async (u) => {
         setUser(u);
         await checkRoles(u);
       })
+      .catch(() => { })
       .finally(() => setLoading(false));
   }, [checkRoles]);
 
-  useEffect(() => {
-    const handleOAuthCallback = async (code: string) => {
-      try {
-        const u = await window.api.exchangeDiscordCode(code);
-        setUser(u);
-        await checkRoles(u);
-        await refreshDiscordStatus();
-      } catch {
-      }
-    };
-
-    window.api.onOAuthCallback(handleOAuthCallback);
-    return () => window.api.offOAuthCallback();
-  }, [checkRoles, refreshDiscordStatus]);
-
+  // ── Login ────────────────────────────────────────────────────────────────────
+  // discordLogin() handles everything in main process:
+  // - opens browser with correct redirect URI (localhost dev / hardhatstudio:// prod)
+  // - waits for callback & exchanges code → user
   const login = async () => {
-    window.api.openExternal(
-      `https://discord.com/oauth2/authorize?client_id=${import.meta.env.VITE_DISCORD_CLIENT_ID}&redirect_uri=hardhatstudio://callback&response_type=code&scope=identify%20guilds`
-    );
+    try {
+      const u = await window.api.discordLogin();
+      if (!u) return;
+      setUser(u);
+      await checkRoles(u);
+      await refreshDiscordStatus();
+    } catch (err) {
+      console.error('[Discord] Login failed:', err);
+    }
   };
 
+  // ── Logout ───────────────────────────────────────────────────────────────────
   const logout = async () => {
     await window.api.logout();
     setUser(null);
