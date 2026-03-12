@@ -1,6 +1,6 @@
 {
   "name": "hardhat-studio",
-  "version": "7.0.0",
+  "version": "7.0.1",
   "description": "Professional Hardhat Development Environment",
   "main": "./out/main/index.js",
   "author": "HardhatStudio",
