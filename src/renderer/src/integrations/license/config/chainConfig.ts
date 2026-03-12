@@ -34,10 +34,10 @@ export const SABLIER_FLOW_CONTRACTS: Record<number, string> = {
   59144: '0x977FDf70abeD6b60eECcee85322beA4575B0b6Ed',
   146: '0x3954146884425accb86a6476dad69ec3591838cd',
   // Testnets
-  11155111: '0xde489096eC9C718358c52a8BBe4ffD74857356e9',
-  84532: '0x19e99dcdbaf2fbf43c60cfd026d571860da29d43',
-  421614: '0x73a474c9995b659bc4736486f25501e0a4a671ed',
-  11155420: '0x4cc7b50b0856c607edee0b6547221360e82e768c',
+  // 11155111: '0xde489096eC9C718358c52a8BBe4ffD74857356e9',
+  // 84532: '0x19e99dcdbaf2fbf43c60cfd026d571860da29d43',
+  // 421614: '0x73a474c9995b659bc4736486f25501e0a4a671ed',
+  // 11155420: '0x4cc7b50b0856c607edee0b6547221360e82e768c',
 };
 
 export const ENVIO_FLOW_ENDPOINT =
@@ -57,10 +57,10 @@ export const THEGRAPH_ENDPOINTS: Record<number, string> = {
   59144: 'https://api.studio.thegraph.com/query/112500/sablier-flow-linea/version/latest',
   146: 'https://api.studio.thegraph.com/query/112500/sablier-flow-sonic/version/latest',
   // Testnets
-  11155111: 'https://api.studio.thegraph.com/query/112500/sablier-flow-sepolia/version/latest',
-  84532: 'https://api.studio.thegraph.com/query/112500/sablier-flow-base-sepolia/version/latest',
-  421614: 'https://api.studio.thegraph.com/query/112500/sablier-flow-arbitrum-sepolia/version/latest',
-  11155420: 'https://api.studio.thegraph.com/query/112500/sablier-flow-optimism-sepolia/version/latest',
+  // 11155111: 'https://api.studio.thegraph.com/query/112500/sablier-flow-sepolia/version/latest',
+  // 84532: 'https://api.studio.thegraph.com/query/112500/sablier-flow-base-sepolia/version/latest',
+  // 421614: 'https://api.studio.thegraph.com/query/112500/sablier-flow-arbitrum-sepolia/version/latest',
+  // 11155420: 'https://api.studio.thegraph.com/query/112500/sablier-flow-optimism-sepolia/version/latest',
 };
 
 //  Runtime-mutable custom chains (added via addCustomChain()) 

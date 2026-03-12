@@ -109,7 +109,7 @@ export function NetworkManager() {
       </div>
 
       {/* Testnet */}
-      <div className="space-y-1">
+      {/* <div className="space-y-1">
         <p className="text-[9px] text-muted-foreground/50 uppercase tracking-widest px-1">
           Testnet
         </p>
@@ -122,10 +122,10 @@ export function NetworkManager() {
             <span className="text-[9px] font-mono text-muted-foreground/40">{chainId}</span>
           </div>
         ))}
-      </div>
+      </div> */}
 
       {/* Add custom */}
-      <div className="overflow-hidden border border-border/40 rounded-xl">
+      {/* <div className="overflow-hidden border border-border/40 rounded-xl">
         <button
           onClick={() => setShowAdd((v) => !v)}
           className="flex items-center gap-2 w-full px-3 py-2 text-[10px] text-muted-foreground hover:text-foreground bg-muted/10 hover:bg-muted/20 transition-colors">
@@ -164,7 +164,7 @@ export function NetworkManager() {
             </button>
           </div>
         )}
-      </div>
+      </div> */}
     </div>
   );
 }
