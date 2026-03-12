@@ -1,110 +1,180 @@
 # Hardhat Studio v2
 
-> Professional Smart Contract Development Environment built with Electron + Vite + React + shadcn/ui
+> Professional Smart Contract Development Environment built with **Electron + Vite + React + shadcn/ui**
+
+Hardhat Studio is a desktop developer tool designed to simplify smart contract development. It provides a visual interface for running Hardhat commands, exploring ABIs, deploying contracts, interacting with smart contracts, and debugging transactions.
+
+---
 
 ## Quick Start
 
 ```bash
-# 1. Unzip & enter folder
+# clone repository
+git clone https://github.com/Mad1Duck/hardhat-studio.git
+
+# enter project folder
 cd hardhat-studio
 
-# 2. Install dependencies
+# install dependencies
 npm install
 
-# 3. Launch in dev mode
+# launch dev mode
 npm run dev
+```
 
-# 4. Build production binary
+---
+
+## Build Production App
+
+```bash
 npm run dist
 ```
 
+This will generate a production desktop installer for your platform.
+
+---
+
 ## Requirements
-- Node.js 18+
-- npm (or yarn/pnpm)
+
+* Node.js **18+**
+* npm / yarn / pnpm
+
+---
 
 ## Features
 
 ### ⬡ Commands Panel
-- **6 configurable command slots**: Node, Compile, Deploy, Test, + 2 custom scripts
-- Click any command text to **edit inline** (while process is stopped)
-- Real-time terminal output with color-coded log levels
-- Filter terminal output by keyword
-- Auto-scroll toggle
+
+* 6 configurable command slots (Node, Compile, Deploy, Test + custom)
+* Inline editable commands
+* Real‑time terminal output
+* Log filtering by keyword
+* Auto‑scroll toggle
 
 ### ◈ ABI Explorer
-- Auto-scans `artifacts/`, `artifacts/contracts/`, `out/` folders
-- Live reload when you recompile (file watcher)
-- Filter by function / event / error / constructor
-- Copy ABI to clipboard
-- Quick **Interact →** jump button
+
+* Auto scans `artifacts/`, `artifacts/contracts/`, and `out/`
+* Live reload when contracts are recompiled
+* Filter by function, event, constructor
+* Copy ABI to clipboard
+* Quick jump to contract interaction
 
 ### ◉ Contract Interact
-- Connect to any RPC endpoint (default: http://127.0.0.1:8545)
-- Support private key or node accounts
-- **Read tab**: call view/pure functions instantly
-- **Write tab**: send transactions with configurable value & gas limit
-- **Deploy tab**: deploy directly from UI with constructor args
-- All results shown inline with error details
+
+* Connect to any RPC endpoint
+* Support private key or node accounts
+* Read / Write smart contract functions
+* Deploy contracts directly from UI
+* Inline transaction results and error details
 
 ### ◆ Deployed Contracts
-- Track all contracts deployed via the UI
-- Copy address and ABI with one click
-- Jump back to Interact panel for any deployed contract
+
+* Track contracts deployed through the UI
+* Copy address or ABI instantly
+* Jump back to interaction panel
 
 ### 🐛 Debug Panel
-- **Errors tab**: All stderr and error-level logs across all processes
-- **Transactions tab**: Full history with hash, gas, block, and args
-- **All Logs tab**: Unified log stream from all processes with filtering
-- **Source Files**: Browse, view, and open contract files in your editor
+
+* Errors tab (stderr + error logs)
+* Transactions history with hash, gas, block, args
+* Unified log stream across processes
+* Source file viewer
 
 ### 📚 Docs & References
-- Quick access to: Hardhat, ethers.js, Solidity, OpenZeppelin, Tools, Security
-- 24 curated links with search and category filtering
-- Opens in your system browser
 
-## Project Structure (for contributors)
+Quick access to curated resources:
+
+* Hardhat
+* ethers.js
+* Solidity
+* OpenZeppelin
+* Security resources
+
+---
+
+## Project Structure
+
 ```
 src/
-  main/index.ts        → Electron main process (IPC handlers, file system, child processes)
-  preload/index.ts     → Preload bridge (exposes API to renderer)
+  main/index.ts        → Electron main process
+  preload/index.ts     → Preload bridge
   renderer/
-    index.html         → Entry HTML
+    index.html
     src/
-      App.tsx          → Root component + global state
-      types.ts         → TypeScript type definitions
-      lib/utils.ts     → Utility functions
+      App.tsx
+      types.ts
+      lib/utils.ts
       components/
-        ui/            → shadcn/ui base components
-        layout/        → Sidebar
-        panels/        → All main panels
+        ui/
+        layout/
+        panels/
 ```
+
+---
 
 ## Troubleshooting
 
-**`node_modules` not found badge**: Run `npm install` in your Hardhat project folder first.
+### node_modules not found
 
-**ABIs not showing**: Make sure to run `npx hardhat compile` in your project. ABIs are stored in the `artifacts/` folder.
+Run:
 
-**RPC connection failed**: Make sure Hardhat node is running (`Run` the Node command) before connecting in the Interact panel.
+```bash
+npm install
+```
 
-**Commands fail silently**: Check that `npx` is available in your PATH. Some setups may need `./node_modules/.bin/hardhat` instead.
+inside your Hardhat project folder.
 
+---
 
-## Troubleshooting — Common Errors
+### ABIs not showing
 
-### ❌ `failed to resolve "extends":"@electron-toolkit/tsconfig/..."`
-This is now fixed. The tsconfigs are fully standalone — no `@electron-toolkit/tsconfig` package needed.
+Run:
 
-### ❌ `Cannot find module '@electron-toolkit/utils'`
-Fixed — main process no longer imports this package.
+```bash
+npx hardhat compile
+```
 
-### ❌ `Cannot find module '@electron-toolkit/preload'`  
-Fixed — preload no longer imports this package.
+ABIs are stored in the `artifacts/` directory.
 
-### ❌ `An entry point is required in the electron vite main config`
-Fixed — `electron.vite.config.ts` now explicitly sets `build.lib.entry` for both `main` and `preload`.
+---
 
-### ✅ Verified dependency list (no hidden packages)
-Only these are required: `electron`, `electron-vite`, `@vitejs/plugin-react`, `react`, `react-dom`, 
-`typescript`, `tailwindcss`, `postcss`, `autoprefixer`, `lucide-react`, `ethers`,
-`clsx`, `tailwind-merge`, `class-variance-authority`, and the `@radix-ui/*` packages listed in package.json.
+### RPC connection failed
+
+Make sure the Hardhat node is running before connecting.
+
+---
+
+### Commands fail silently
+
+Ensure `npx` is available in your PATH.
+
+Some environments may require:
+
+```bash
+./node_modules/.bin/hardhat
+```
+
+---
+
+## Support the Project
+
+If Hardhat Studio improves your development workflow, consider supporting the project.
+
+```
+ETH / USDC
+0x2eaa041d966B6C2A12b4356b780a378f1342e8b1
+```
+
+Every donation helps keep the project maintained and improved.
+
+---
+
+## License
+
+MIT License
+
+---
+
+## Author
+
+Created and maintained by the Hardhat Studio project.
