@@ -67,7 +67,6 @@ const PROXY_SLOTS = {
 //  IPC Handlers 
 export function registerEvmHandlers(): void {
 
-  //  Chain state 
   ipcMain.handle('evm-snapshot', async (_, rpcUrl: string) => {
     try {
       const data = await rpc<string>(rpcUrl, 'evm_snapshot');
@@ -101,7 +100,6 @@ export function registerEvmHandlers(): void {
     } catch { return 0; }
   });
 
-  //  Hardhat accounts 
   ipcMain.handle('get-hardhat-accounts', async (_, rpcUrl: string) => {
     try {
       const data = await rpc<string[]>(rpcUrl, 'eth_accounts');

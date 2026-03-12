@@ -100,6 +100,20 @@
       "owner": "Mad1Duck",
       "repo": "hardhat-studio"
     },
-    "icon": "build/icon"
+    "icon": "build/icon",
+    "protocols": [
+      {
+        "name": "Hardhat Studio",
+        "schemes": [
+          "hardhatstudio"
+        ]
+      }
+    ],
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   }
 }

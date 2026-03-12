@@ -12,7 +12,7 @@ export function useDiscordAuth() {
   const [roleChecking, setRoleChecking] = useState(false);
   const { refreshDiscordStatus } = useLicense();
 
-  // ── Check roles ──────────────────────────────────────────────────────────────
+  //  Check roles 
   const checkRoles = useCallback(async (u: DiscordUser | null) => {
     if (!u?.id || DISCORD_RULES.length === 0) {
       setDiscordPlan('free');
@@ -30,7 +30,7 @@ export function useDiscordAuth() {
     }
   }, []);
 
-  // ── Restore session on mount ─────────────────────────────────────────────────
+  //  Restore session on mount 
   useEffect(() => {
     window.api.getUser()
       .then(async (u) => {
@@ -41,10 +41,7 @@ export function useDiscordAuth() {
       .finally(() => setLoading(false));
   }, [checkRoles]);
 
-  // ── Login ────────────────────────────────────────────────────────────────────
-  // discordLogin() handles everything in main process:
-  // - opens browser with correct redirect URI (localhost dev / hardhatstudio:// prod)
-  // - waits for callback & exchanges code → user
+  //  Login 
   const login = async () => {
     try {
       const u = await window.api.discordLogin();
@@ -57,7 +54,7 @@ export function useDiscordAuth() {
     }
   };
 
-  // ── Logout ───────────────────────────────────────────────────────────────────
+  //  Logout 
   const logout = async () => {
     await window.api.logout();
     setUser(null);

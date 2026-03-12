@@ -72,13 +72,13 @@ export interface PlanPricing {
 const _basicUSD = (() => {
   const env = Number(import.meta.env.VITE_BASIC_PLAN_USD);
   if (!isNaN(env) && env > 0) return env;
-  return IS_TESTNET_MODE ? 0.01 : 9;    // ← change your default here
+  return IS_TESTNET_MODE ? 0.01 : 9;
 })();
 
 const _proUSD = (() => {
   const env = Number(import.meta.env.VITE_PRO_PLAN_USD);
   if (!isNaN(env) && env > 0) return env;
-  return IS_TESTNET_MODE ? 0.02 : 15;   // ← change your default here
+  return IS_TESTNET_MODE ? 0.02 : 15;
 })();
 
 export const PLAN_CONFIG: Record<Exclude<Plan, 'free'>, PlanPricing> = {

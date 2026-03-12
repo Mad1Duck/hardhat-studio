@@ -40,8 +40,14 @@ export function registerFilesystemHandlers(getWin: () => BrowserWindow | null): 
   });
 
   //  Open external URL / editor 
-  ipcMain.handle('open-external', async (_, url: string) =>
-    shell.openExternal(url));
+  ipcMain.handle('open-external', async (_, url: string) => {
+    // Hanya izinkan https:// dan http:// — blokir file://, javascript:, dll
+    try {
+      const parsed = new URL(url);
+      if (!['https:', 'http:'].includes(parsed.protocol)) return false;
+    } catch { return false; }
+    return shell.openExternal(url);
+  });
 
   ipcMain.handle('open-in-editor', async (_, filePath: string) => {
     const editors = ['code', 'cursor', 'subl', 'vim', 'nano'];

@@ -1,14 +1,13 @@
 import { app, shell, BrowserWindow } from 'electron';
 import { join } from 'path';
-import { config } from 'dotenv';
 
-// Load .env
+const { config } = require('dotenv');
 const envPath = app.isPackaged
   ? join(process.resourcesPath, '.env')
   : join(__dirname, '../../.env');
 config({ path: envPath });
 
-// IPC modules
+// IPC modules 
 import { initAutoUpdater, setupAutoUpdaterWindow, registerUpdaterHandlers } from './ipc/updater';
 import { registerWalletConnectHandlers } from './ipc/walletconnect';
 import { registerDiscordHandlers, handleDiscordCallback } from './ipc/discord';
@@ -21,7 +20,7 @@ import { registerEvmHandlers } from './ipc/evm';
 import { registerAnalysisHandlers } from './ipc/analysis';
 
 // Constants
-const isDev = process.env.VITE_NODE_ENV === 'development';
+const isDev = !app.isPackaged;
 const iconPath = app.isPackaged
   ? join(process.resourcesPath, 'build/icon.png')
   : join(__dirname, '../../build/icon.png');
@@ -31,7 +30,7 @@ let mainWindow: BrowserWindow | null = null;
 const getWin = () => mainWindow;
 
 //  Register custom protocol 
-app.setAsDefaultProtocolClient('hardhatstudio'); // 👈 tambah ini
+app.setAsDefaultProtocolClient('hardhatstudio');
 
 // Windows / Linux: handle deep link via second-instance
 const gotLock = app.requestSingleInstanceLock();
@@ -39,12 +38,10 @@ if (!gotLock) {
   app.quit();
 } else {
   app.on('second-instance', (_, argv) => {
-    // Focus window jika ada
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
     }
-    // Cari URL hardhatstudio:// dari argv
     const url = argv.find(arg => arg.startsWith('hardhatstudio://'));
     if (url) handleDiscordCallback(url); // 👈
   });
@@ -85,6 +82,7 @@ function createWindow(): void {
   });
 
   if (isDev) {
+    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL']!);
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'));

@@ -3,7 +3,6 @@ import fs from 'fs';
 import path from 'path';
 import type { BrowserWindow } from 'electron';
 
-//  Security pattern definitions 
 interface SecurityRule {
   test: RegExp | string;
   severity: 'critical' | 'high' | 'medium' | 'low';
@@ -130,7 +129,6 @@ const OPCODES = buildOpcodeTable();
 //  IPC Handlers 
 export function registerAnalysisHandlers(getWin: () => BrowserWindow | null): void {
 
-  //  Security scan 
   ipcMain.handle('analyze-security', async (
     _,
     { folderPath }: { folderPath: string; },
@@ -150,7 +148,6 @@ export function registerAnalysisHandlers(getWin: () => BrowserWindow | null): vo
             const content = fs.readFileSync(full, 'utf-8');
             const lines = content.split('\n');
 
-            // Line-level rules
             lines.forEach((line, i) => {
               LINE_RULES.forEach(rule => {
                 if (matchRule(line, rule)) {
@@ -165,7 +162,6 @@ export function registerAnalysisHandlers(getWin: () => BrowserWindow | null): vo
               });
             });
 
-            // File-level rules
             if (!content.includes('pragma solidity') || content.match(/pragma solidity\s+\^0\.[0-7]/)) {
               findings.push({ severity: 'medium', title: 'Outdated Solidity', description: `${entry.name} may use outdated compiler`, recommendation: 'Use solidity 0.8.x or later' });
             }
@@ -182,7 +178,6 @@ export function registerAnalysisHandlers(getWin: () => BrowserWindow | null): vo
     return findings;
   });
 
-  //  Storage layout (heuristic) 
   ipcMain.handle('analyze-storage-layout', async (
     _,
     { folderPath, contractName }: { folderPath: string; contractName: string; },
@@ -226,7 +221,6 @@ export function registerAnalysisHandlers(getWin: () => BrowserWindow | null): vo
     return slots;
   });
 
-  //  Decode bytecode to opcodes 
   ipcMain.handle('decode-opcodes', async (_, bytecode: string) => {
     const hex = bytecode.startsWith('0x') ? bytecode.slice(2) : bytecode;
     const bytes = Buffer.from(hex, 'hex');

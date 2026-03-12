@@ -1,10 +1,10 @@
 import { ipcMain } from 'electron';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 
 //  Helper 
-function git(cmd: string, cwd: string): string {
+function git(args: string[], cwd: string): string {
   try {
-    return execSync(`git ${cmd}`, {
+    return execFileSync('git', args, {
       cwd,
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -12,18 +12,31 @@ function git(cmd: string, cwd: string): string {
   } catch { return ''; }
 }
 
+// Validasi branch name — hanya huruf, angka, dan karakter git yang valid
+function isValidBranch(branch: string): boolean {
+  return /^[a-zA-Z0-9._\-/]+$/.test(branch) && branch.length <= 255;
+}
+
+// Validasi commit message — blokir karakter null byte
+function isValidMessage(msg: string): boolean {
+  return msg.length > 0 && msg.length <= 1000 && !msg.includes('\0');
+}
+
 //  IPC Handlers 
 export function registerGitHandlers(): void {
 
   ipcMain.handle('git-status', async (_, cwd: string) => {
     try {
-      const branch = git('rev-parse --abbrev-ref HEAD', cwd);
+      const branch = git(['rev-parse', '--abbrev-ref', 'HEAD'], cwd);
       if (!branch) return null;
 
-      const remoteUrl = git('remote get-url origin', cwd);
-      const ahead = parseInt(git('rev-list --count @{u}..HEAD', cwd) || '0');
-      const behind = parseInt(git('rev-list --count HEAD..@{u}', cwd) || '0');
-      const raw = git('status --porcelain', cwd);
+      const remoteUrl = git(['remote', 'get-url', 'origin'], cwd);
+      const aheadStr = git(['rev-list', '--count', '@{u}..HEAD'], cwd);
+      const behindStr = git(['rev-list', '--count', 'HEAD..@{u}'], cwd);
+      const raw = git(['status', '--porcelain'], cwd);
+
+      const ahead = parseInt(aheadStr || '0');
+      const behind = parseInt(behindStr || '0');
 
       const staged: string[] = [];
       const unstaged: string[] = [];
@@ -51,7 +64,7 @@ export function registerGitHandlers(): void {
 
   ipcMain.handle('git-branches', async (_, cwd: string) => {
     try {
-      return git('branch -a', cwd)
+      return git(['branch', '-a'], cwd)
         .split('\n')
         .filter(Boolean)
         .map(b => ({
@@ -64,7 +77,7 @@ export function registerGitHandlers(): void {
 
   ipcMain.handle('git-log', async (_, cwd: string) => {
     try {
-      return git('log --oneline --format="%H|%h|%s|%an|%ar" -20', cwd)
+      return git(['log', '--oneline', '--format=%H|%h|%s|%an|%ar', '-20'], cwd)
         .split('\n')
         .filter(Boolean)
         .map(l => {
@@ -79,7 +92,10 @@ export function registerGitHandlers(): void {
     { cwd, file }: { cwd: string; file?: string; },
   ) => {
     try {
-      return git(file ? `diff HEAD -- "${file}"` : 'diff HEAD', cwd);
+      const args = file
+        ? ['diff', 'HEAD', '--', file]
+        : ['diff', 'HEAD'];
+      return git(args, cwd);
     } catch { return ''; }
   });
 
@@ -87,10 +103,11 @@ export function registerGitHandlers(): void {
     _,
     { cwd, message, push }: { cwd: string; message: string; push: boolean; },
   ) => {
+    if (!isValidMessage(message)) return { success: false, error: 'Invalid commit message' };
     try {
-      git('add -A', cwd);
-      git(`commit -m "${message.replace(/"/g, '\\"')}"`, cwd);
-      if (push) git('push', cwd);
+      git(['add', '-A'], cwd);
+      git(['commit', '-m', message], cwd);
+      if (push) git(['push'], cwd);
       return { success: true };
     } catch (e) { return { success: false, error: String(e) }; }
   });
@@ -99,14 +116,16 @@ export function registerGitHandlers(): void {
     _,
     { cwd, branch, create }: { cwd: string; branch: string; create: boolean; },
   ) => {
+    if (!isValidBranch(branch)) return { success: false, error: 'Invalid branch name' };
     try {
-      git(create ? `checkout -b ${branch}` : `checkout ${branch}`, cwd);
+      const args = create ? ['checkout', '-b', branch] : ['checkout', branch];
+      git(args, cwd);
       return { success: true };
     } catch (e) { return { success: false, error: String(e) }; }
   });
 
   ipcMain.handle('git-pull', async (_, cwd: string) => {
-    try { git('pull', cwd); return { success: true }; }
+    try { git(['pull'], cwd); return { success: true }; }
     catch (e) { return { success: false, error: String(e) }; }
   });
 }

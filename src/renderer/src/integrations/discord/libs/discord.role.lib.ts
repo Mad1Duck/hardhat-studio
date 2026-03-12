@@ -1,10 +1,3 @@
-//
-//  DISCORD ROLE SERVICE — check user roles across multiple guilds
-//
-//  Bot Token NEVER exposed to renderer.
-//  Calls window.api.checkDiscordRole() → IPC → main process → Discord API
-//
-
 import type { DiscordRuleEntry } from '../config/discord.config';
 
 //  Cache (5 min TTL) 
@@ -44,11 +37,6 @@ async function checkGuildRole(
 }
 
 //  Public API 
-
-/**
- * resolveMatchedRules — check userId against all rules in parallel.
- * Returns only rules where the user has at least one matching role.
- */
 export async function resolveMatchedRules(
   userId: string,
   rules: DiscordRuleEntry[],
@@ -64,16 +52,13 @@ export async function resolveMatchedRules(
   return results.filter((r): r is DiscordRuleEntry => r !== null);
 }
 
-/**
- * getHighestPlan — derive the highest plan from matched rules.
- */
+
 export function getHighestPlan(matchedRules: DiscordRuleEntry[]): 'free' | 'basic' | 'pro' {
   if (matchedRules.some((r) => r.plans.includes('pro'))) return 'pro';
   if (matchedRules.some((r) => r.plans.includes('basic'))) return 'basic';
   return 'free';
 }
 
-/** clearRoleCache — call after login/logout to force fresh API check. */
 export function clearRoleCache(): void {
   _cache.clear();
 }

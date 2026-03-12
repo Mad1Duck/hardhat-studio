@@ -1,12 +1,3 @@
-//
-//  discord.api.service.ts — Main Process only
-//
-//  Calls Discord REST API using Bot Token.
-//  NEVER import this in renderer — bot token lives here only.
-//
-//  Usage in main.ts:
-//    import { checkUserRoles } from './services/discord.api.service'
-//
 import axios from 'axios';
 
 interface DiscordMember {
@@ -14,13 +5,6 @@ interface DiscordMember {
   roles: string[];
 }
 
-/**
- * checkUserRoles — check if a user has ANY of the given roleIds in a guild.
- *
- * Changed from original:
- *   - roleId: string  →  roleIds: string[]  (support multiple roles, OR logic)
- *   - returns true if user has at least one of the roleIds
- */
 export async function checkUserRoles({
   botToken,
   guildId,

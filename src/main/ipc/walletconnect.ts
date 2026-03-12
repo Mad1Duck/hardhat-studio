@@ -20,17 +20,13 @@ export function sendWcApproved(
   if (win && !win.isDestroyed()) win.webContents.send('wc-approved', result);
 }
 
-/**
- * Get or init the SignClient singleton.
- * On restart, restores persisted sessions from its built-in store — no re-scan needed.
- */
 async function getOrInitWcClient(): Promise<any> {
   if (_wcClient) return _wcClient;
 
   const projectId =
     process.env.VITE_WC_PROJECT_ID ||
     process.env.WC_PROJECT_ID ||
-    '3721e5967517bd23fc60c504c8ded53c';
+    '';
 
   // Polyfill crypto for Node < 19
   if (!globalThis.crypto || !(globalThis.crypto as any).getRandomValues) {
@@ -81,7 +77,7 @@ export function registerWalletConnectHandlers(getWin: () => BrowserWindow | null
     const projectId =
       process.env.VITE_WC_PROJECT_ID ||
       process.env.WC_PROJECT_ID ||
-      '3721e5967517bd23fc60c504c8ded53c';
+      '';
 
     if (!projectId) return { error: 'NO_PROJECT_ID' };
 

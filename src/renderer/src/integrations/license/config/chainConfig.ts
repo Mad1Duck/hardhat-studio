@@ -1,7 +1,3 @@
-// 
-//  CHAIN CONFIG — network names, Sablier contract addresses, subgraph endpoints
-// 
-
 //  Chain display names 
 export const CHAIN_NAMES: Record<number, string> = {
   // Mainnets
@@ -24,8 +20,6 @@ export const CHAIN_NAMES: Record<number, string> = {
   11155420: 'Optimism Sepolia',
 };
 
-//  Sablier Flow v2.0 (FL3) contract addresses 
-//    Source: https://docs.sablier.com/guides/flow/deployments
 export const SABLIER_FLOW_CONTRACTS: Record<number, string> = {
   // Mainnets
   1: '0x7a86d3e6894f9c5b5f25ffbdaae658cfc7569623',
@@ -45,11 +39,6 @@ export const SABLIER_FLOW_CONTRACTS: Record<number, string> = {
   421614: '0x73a474c9995b659bc4736486f25501e0a4a671ed',
   11155420: '0x4cc7b50b0856c607edee0b6547221360e82e768c',
 };
-
-//  Sablier Flow subgraph endpoints 
-//    Envio: multi-chain single endpoint (primary)
-//    TheGraph: per-chain endpoints (fallback, query ID 112500)
-//    Source: https://docs.sablier.com/api/flow/indexers
 
 export const ENVIO_FLOW_ENDPOINT =
   'https://indexer.hyperindex.xyz/a0b4e0b/v1/graphql';

@@ -1,6 +1,3 @@
-//
-//  LicenseGate — renders children if plan ok, else shows upgrade prompt
-//
 import { useState, ReactNode } from 'react';
 import { Droplets } from 'lucide-react';
 import { useLicense, Feature, PLAN_META } from '@/integrations/license';

@@ -2,7 +2,6 @@ import { ipcMain, shell, BrowserWindow } from 'electron';
 
 let autoUpdater: any = null;
 
-//  Setup 
 export function initAutoUpdater(isDev: boolean): void {
   if (isDev) return;
 
@@ -12,6 +11,10 @@ export function initAutoUpdater(isDev: boolean): void {
   au.logger = log;
   au.logger.transports.file.level = 'info';
   au.autoDownload = false;
+
+  if (process.env.GH_TOKEN) {
+    au.requestHeaders = { Authorization: `token ${process.env.GH_TOKEN}` };
+  }
   au.autoInstallOnAppQuit = true;
   au.allowPrerelease = false;
   au.allowDowngrade = false;
@@ -38,12 +41,10 @@ export function setupAutoUpdaterWindow(win: BrowserWindow): void {
   autoUpdater.on('error', (e: Error) =>
     send({ type: 'error', message: e.message }));
 
-  // Check on startup after 5s, then every hour
   setTimeout(() => autoUpdater.checkForUpdates(), 5_000);
   setInterval(() => autoUpdater.checkForUpdates().catch(() => { }), 60 * 60 * 1_000);
 }
 
-//  IPC Handlers 
 export function registerUpdaterHandlers(): void {
   ipcMain.handle('force-update', async () => {
     if (!autoUpdater) return false;

@@ -1,20 +1,23 @@
 "use strict";
 const electron = require("electron");
 const path = require("path");
-const dotenv = require("dotenv");
 const axios = require("axios");
 const http = require("http");
 const keytar = require("keytar");
+const log = require("electron-log");
 const child_process = require("child_process");
 const fs = require("fs");
 let autoUpdater = null;
 function initAutoUpdater(isDev2) {
   if (isDev2) return;
   const { autoUpdater: au } = require("electron-updater");
-  const log = require("electron-log");
-  au.logger = log;
+  const log2 = require("electron-log");
+  au.logger = log2;
   au.logger.transports.file.level = "info";
   au.autoDownload = false;
+  if (process.env.GH_TOKEN) {
+    au.requestHeaders = { Authorization: `token ${process.env.GH_TOKEN}` };
+  }
   au.autoInstallOnAppQuit = true;
   au.allowPrerelease = false;
   au.allowDowngrade = false;
@@ -77,7 +80,7 @@ function sendWcApproved(win, result) {
 }
 async function getOrInitWcClient() {
   if (_wcClient) return _wcClient;
-  const projectId = process.env.VITE_WC_PROJECT_ID || process.env.WC_PROJECT_ID || "3721e5967517bd23fc60c504c8ded53c";
+  const projectId = process.env.VITE_WC_PROJECT_ID || process.env.WC_PROJECT_ID || "";
   if (!globalThis.crypto || !globalThis.crypto.getRandomValues) {
     const nodeCrypto = require("node:crypto");
     globalThis.crypto = nodeCrypto.webcrypto;
@@ -116,7 +119,8 @@ function registerWalletConnectHandlers(getWin2) {
     }
   });
   electron.ipcMain.handle("wc-get-uri", async () => {
-    process.env.VITE_WC_PROJECT_ID || process.env.WC_PROJECT_ID || "3721e5967517bd23fc60c504c8ded53c";
+    const projectId = process.env.VITE_WC_PROJECT_ID || process.env.WC_PROJECT_ID || "";
+    if (!projectId) return { error: "NO_PROJECT_ID" };
     try {
       const client = await getOrInitWcClient();
       const { uri, approval } = await client.connect({
@@ -233,9 +237,24 @@ async function checkUserRoles({
     throw error;
   }
 }
-const DEV_REDIRECT_URI = "http://localhost:4399/callback";
-const PROD_REDIRECT_URI = "hardhatstudio://callback";
-let resolveLogin = null;
+const CANDIDATE_PORTS = [4399, 4400, 4401, 4402];
+function getAvailablePort() {
+  return new Promise((resolve, reject) => {
+    const tryPort = (i) => {
+      if (i >= CANDIDATE_PORTS.length) {
+        reject(new Error("Semua port kandidat sedang digunakan"));
+        return;
+      }
+      const port = CANDIDATE_PORTS[i];
+      const srv = require("net").createServer();
+      srv.once("error", () => tryPort(i + 1));
+      srv.listen(port, "127.0.0.1", () => {
+        srv.close(() => resolve(port));
+      });
+    };
+    tryPort(0);
+  });
+}
 let rejectLogin = null;
 async function handleDiscordCallback(url) {
   try {
@@ -244,15 +263,6 @@ async function handleDiscordCallback(url) {
     if (!code) return;
     const isDev2 = !electron.app.isPackaged;
     if (isDev2) {
-      return;
-    }
-    if (resolveLogin) {
-      try {
-        const user = await exchangeToken(code, PROD_REDIRECT_URI);
-        resolveLogin(user);
-      } catch (err) {
-        rejectLogin?.(err);
-      }
       return;
     }
     const win = electron.BrowserWindow.getAllWindows()[0];
@@ -299,66 +309,228 @@ function registerDiscordHandlers() {
     return checkUserRoles({ botToken, guildId, userId, roleIds });
   });
   electron.ipcMain.handle("discord-exchange-code", async (_, code) => {
-    const isDev2 = !electron.app.isPackaged;
-    const redirectUri = isDev2 ? DEV_REDIRECT_URI : PROD_REDIRECT_URI;
+    const port = await getAvailablePort();
+    const redirectUri = `http://localhost:${port}/callback`;
     return exchangeToken(code, redirectUri);
   });
   electron.ipcMain.handle("discord-login", async () => {
-    resolveLogin = null;
     rejectLogin = null;
     await deleteStorage("discord_access_token");
     await deleteStorage("discord_user");
     const CLIENT_ID = process.env.DISCORD_CLIENT_ID;
-    const isDev2 = !electron.app.isPackaged;
-    const REDIRECT_URI = isDev2 ? DEV_REDIRECT_URI : PROD_REDIRECT_URI;
-    console.log("[Discord] isDev:", isDev2);
-    console.log("[Discord] app.isPackaged:", electron.app.isPackaged);
-    console.log("[Discord] CLIENT_ID:", CLIENT_ID);
-    console.log("[Discord] REDIRECT_URI:", REDIRECT_URI);
-    const authUrl = `https://discord.com/oauth2/authorize?client_id=${CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=identify`;
+    log.info("[Discord] app.isPackaged:", electron.app.isPackaged);
+    log.info("[Discord] CLIENT_ID:", CLIENT_ID ?? "UNDEFINED!!!");
+    const port = await getAvailablePort();
+    const redirectUri = `http://localhost:${port}/callback`;
+    const dynamicAuthUrl = `https://discord.com/oauth2/authorize?client_id=${CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=identify`;
     return new Promise((resolve, reject) => {
       let server = null;
       const timeout = setTimeout(() => {
-        resolveLogin = null;
-        rejectLogin = null;
         server?.close();
         reject(new Error("Login timeout"));
       }, 5 * 60 * 1e3);
       const done = (user, err) => {
         clearTimeout(timeout);
-        resolveLogin = null;
-        rejectLogin = null;
         server?.close();
         if (err) reject(err);
         else resolve(user);
       };
-      if (isDev2) {
-        server = http.createServer(async (req, res) => {
-          if (!req.url) return;
-          const reqUrl = new URL(req.url, DEV_REDIRECT_URI);
-          const code = reqUrl.searchParams.get("code");
-          if (!code) return;
-          res.writeHead(200, { "Content-Type": "text/html" });
-          res.end("<h2>Login berhasil. Silakan kembali ke aplikasi.</h2>");
-          try {
-            const user = await exchangeToken(code, DEV_REDIRECT_URI);
-            done(user);
-          } catch (err) {
-            done(void 0, err);
-          }
-        });
-        server.listen(4399, () => {
-          console.log("[Discord] Listening on http://localhost:4399/callback");
-        });
-        server.on("error", (err) => {
-          console.error("[Discord] Server error:", err);
+      server = http.createServer(async (req, res) => {
+        if (!req.url) return;
+        const reqUrl = new URL(req.url, redirectUri);
+        const code = reqUrl.searchParams.get("code");
+        if (!code) return;
+        const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login Successful</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --accent: hsl(30, 95%, 54%);
+      --accent-dim: hsla(30, 95%, 54%, 0.12);
+      --accent-border: hsla(30, 95%, 54%, 0.3);
+      --accent-glow: hsla(30, 95%, 54%, 0.15);
+    }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0a0a0a;
+      font-family: 'DM Sans', sans-serif;
+      overflow: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 60% 50% at 30% 40%, var(--accent-glow) 0%, transparent 70%),
+        radial-gradient(ellipse 40% 60% at 75% 65%, hsla(30, 95%, 54%, 0.07) 0%, transparent 60%);
+      pointer-events: none;
+    }
+
+    .card {
+      position: relative;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.09);
+      border-radius: 20px;
+      padding: 52px 48px 44px;
+      max-width: 420px;
+      width: 90%;
+      text-align: center;
+      backdrop-filter: blur(24px);
+      animation: rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(28px) scale(0.97); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 15%; right: 15%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      border-radius: 999px;
+    }
+
+    .icon-wrap {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 28px;
+      background: var(--accent-dim);
+      border: 1px solid var(--accent-border);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: pop 0.5s 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    }
+
+    @keyframes pop {
+      from { opacity: 0; transform: scale(0.5); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+
+    .icon-wrap svg {
+      width: 28px; height: 28px;
+      stroke: var(--accent);
+      stroke-width: 2.5;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .icon-wrap svg path {
+      stroke-dasharray: 40;
+      stroke-dashoffset: 40;
+      animation: draw 0.4s 0.6s ease forwards;
+    }
+
+    @keyframes draw {
+      to { stroke-dashoffset: 0; }
+    }
+
+    h1 {
+      font-family: 'DM Serif Display', serif;
+      font-size: 1.75rem;
+      color: #f0f0ef;
+      letter-spacing: -0.02em;
+      margin-bottom: 12px;
+      animation: fadein 0.5s 0.4s ease both;
+    }
+
+    p {
+      font-size: 0.9rem;
+      color: rgba(255,255,255,0.45);
+      line-height: 1.65;
+      animation: fadein 0.5s 0.5s ease both;
+    }
+
+    @keyframes fadein {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .divider {
+      margin: 28px 0;
+      height: 1px;
+      background: rgba(255,255,255,0.07);
+      animation: fadein 0.5s 0.55s ease both;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 16px;
+      background: var(--accent-dim);
+      border: 1px solid var(--accent-border);
+      border-radius: 999px;
+      font-size: 0.78rem;
+      color: var(--accent);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      font-weight: 500;
+      animation: fadein 0.5s 0.65s ease both;
+    }
+
+    .status-pill::before {
+      content: '';
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 6px var(--accent);
+      animation: pulse 1.8s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon-wrap">
+      <svg viewBox="0 0 24 24">
+        <path d="M5 13l4 4L19 7"/>
+      </svg>
+    </div>
+    <h1>Login Successful</h1>
+    <p>Authentication complete. You may close this tab and return to the application.</p>
+    <div class="divider"></div>
+    <span class="status-pill">Session active</span>
+  </div>
+</body>
+</html>`;
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(html);
+        try {
+          const user = await exchangeToken(code, redirectUri);
+          done(user);
+        } catch (err) {
           done(void 0, err);
-        });
-      } else {
-        resolveLogin = (user) => done(user);
-        rejectLogin = (err) => done(void 0, err);
-      }
-      electron.shell.openExternal(authUrl);
+        }
+      });
+      server.listen(port, () => {
+        log.info(`[Discord] Listening on ${redirectUri}`);
+      });
+      server.on("error", (err) => {
+        log.error("[Discord] Server error:", err);
+        done(void 0, err);
+      });
+      electron.shell.openExternal(dynamicAuthUrl);
     });
   });
 }
@@ -739,7 +911,15 @@ function registerFilesystemHandlers(getWin2) {
       return [];
     }
   });
-  electron.ipcMain.handle("open-external", async (_, url) => electron.shell.openExternal(url));
+  electron.ipcMain.handle("open-external", async (_, url) => {
+    try {
+      const parsed = new URL(url);
+      if (!["https:", "http:"].includes(parsed.protocol)) return false;
+    } catch {
+      return false;
+    }
+    return electron.shell.openExternal(url);
+  });
   electron.ipcMain.handle("open-in-editor", async (_, filePath) => {
     const editors = ["code", "cursor", "subl", "vim", "nano"];
     for (const editor of editors) {
@@ -855,9 +1035,9 @@ function registerFilesystemHandlers(getWin2) {
     }
   });
 }
-function git(cmd, cwd) {
+function git(args, cwd) {
   try {
-    return child_process.execSync(`git ${cmd}`, {
+    return child_process.execFileSync("git", args, {
       cwd,
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"]
@@ -866,15 +1046,23 @@ function git(cmd, cwd) {
     return "";
   }
 }
+function isValidBranch(branch) {
+  return /^[a-zA-Z0-9._\-/]+$/.test(branch) && branch.length <= 255;
+}
+function isValidMessage(msg) {
+  return msg.length > 0 && msg.length <= 1e3 && !msg.includes("\0");
+}
 function registerGitHandlers() {
   electron.ipcMain.handle("git-status", async (_, cwd) => {
     try {
-      const branch = git("rev-parse --abbrev-ref HEAD", cwd);
+      const branch = git(["rev-parse", "--abbrev-ref", "HEAD"], cwd);
       if (!branch) return null;
-      const remoteUrl = git("remote get-url origin", cwd);
-      const ahead = parseInt(git("rev-list --count @{u}..HEAD", cwd) || "0");
-      const behind = parseInt(git("rev-list --count HEAD..@{u}", cwd) || "0");
-      const raw = git("status --porcelain", cwd);
+      const remoteUrl = git(["remote", "get-url", "origin"], cwd);
+      const aheadStr = git(["rev-list", "--count", "@{u}..HEAD"], cwd);
+      const behindStr = git(["rev-list", "--count", "HEAD..@{u}"], cwd);
+      const raw = git(["status", "--porcelain"], cwd);
+      const ahead = parseInt(aheadStr || "0");
+      const behind = parseInt(behindStr || "0");
       const staged = [];
       const unstaged = [];
       const untracked = [];
@@ -900,7 +1088,7 @@ function registerGitHandlers() {
   });
   electron.ipcMain.handle("git-branches", async (_, cwd) => {
     try {
-      return git("branch -a", cwd).split("\n").filter(Boolean).map((b) => ({
+      return git(["branch", "-a"], cwd).split("\n").filter(Boolean).map((b) => ({
         name: b.replace(/^\*?\s+/, "").trim(),
         current: b.startsWith("*"),
         remote: b.trim().startsWith("remotes/")
@@ -911,7 +1099,7 @@ function registerGitHandlers() {
   });
   electron.ipcMain.handle("git-log", async (_, cwd) => {
     try {
-      return git('log --oneline --format="%H|%h|%s|%an|%ar" -20', cwd).split("\n").filter(Boolean).map((l) => {
+      return git(["log", "--oneline", "--format=%H|%h|%s|%an|%ar", "-20"], cwd).split("\n").filter(Boolean).map((l) => {
         const [hash, shortHash, message, author, date] = l.split("|");
         return { hash, shortHash, message, author, date };
       });
@@ -921,24 +1109,28 @@ function registerGitHandlers() {
   });
   electron.ipcMain.handle("git-diff", async (_, { cwd, file }) => {
     try {
-      return git(file ? `diff HEAD -- "${file}"` : "diff HEAD", cwd);
+      const args = file ? ["diff", "HEAD", "--", file] : ["diff", "HEAD"];
+      return git(args, cwd);
     } catch {
       return "";
     }
   });
   electron.ipcMain.handle("git-commit", async (_, { cwd, message, push }) => {
+    if (!isValidMessage(message)) return { success: false, error: "Invalid commit message" };
     try {
-      git("add -A", cwd);
-      git(`commit -m "${message.replace(/"/g, '\\"')}"`, cwd);
-      if (push) git("push", cwd);
+      git(["add", "-A"], cwd);
+      git(["commit", "-m", message], cwd);
+      if (push) git(["push"], cwd);
       return { success: true };
     } catch (e) {
       return { success: false, error: String(e) };
     }
   });
   electron.ipcMain.handle("git-checkout", async (_, { cwd, branch, create }) => {
+    if (!isValidBranch(branch)) return { success: false, error: "Invalid branch name" };
     try {
-      git(create ? `checkout -b ${branch}` : `checkout ${branch}`, cwd);
+      const args = create ? ["checkout", "-b", branch] : ["checkout", branch];
+      git(args, cwd);
       return { success: true };
     } catch (e) {
       return { success: false, error: String(e) };
@@ -946,7 +1138,7 @@ function registerGitHandlers() {
   });
   electron.ipcMain.handle("git-pull", async (_, cwd) => {
     try {
-      git("pull", cwd);
+      git(["pull"], cwd);
       return { success: true };
     } catch (e) {
       return { success: false, error: String(e) };
@@ -1403,9 +1595,10 @@ function registerAnalysisHandlers(getWin2) {
     }
   });
 }
+const { config } = require("dotenv");
 const envPath = electron.app.isPackaged ? path.join(process.resourcesPath, ".env") : path.join(__dirname, "../../.env");
-dotenv.config({ path: envPath });
-const isDev = process.env.VITE_NODE_ENV === "development";
+config({ path: envPath });
+const isDev = !electron.app.isPackaged;
 const iconPath = electron.app.isPackaged ? path.join(process.resourcesPath, "build/icon.png") : path.join(__dirname, "../../build/icon.png");
 let mainWindow = null;
 const getWin = () => mainWindow;
@@ -1452,6 +1645,7 @@ function createWindow() {
     return { action: "deny" };
   });
   if (isDev) {
+    mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"]);
     mainWindow.webContents.openDevTools({ mode: "detach" });
   } else {
     mainWindow.loadFile(path.join(__dirname, "../renderer/index.html"));

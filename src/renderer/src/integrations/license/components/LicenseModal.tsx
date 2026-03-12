@@ -1,6 +1,3 @@
-//
-//  LicenseModal — wallet connect + plan selection + stream management
-//
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Wallet,
@@ -251,7 +248,7 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto">
-          {import.meta.env.VITE_DEV_UNLOCK === 'true' && activeTab === 'status' && (
+          {activeTab === 'status' && (
             <div className="p-5 space-y-4">
               {isDev && (
                 <div className="flex items-start gap-3 p-3 text-xs border rounded-xl bg-emerald-500/10 border-emerald-500/20 text-emerald-400">
@@ -259,7 +256,7 @@ export function LicenseModal({ onClose }: { onClose: () => void }) {
                   <div>
                     <p className="font-semibold">Dev Mode Active</p>
                     <p className="text-emerald-400/60 mt-0.5">
-                      All feature unlocked via VITE_DEV_UNLOCK=true
+                      All feature unlocked via VITE_DEV_UNLOCK={import.meta.env.VITE_DEV_UNLOCK}
                     </p>
                   </div>
                 </div>

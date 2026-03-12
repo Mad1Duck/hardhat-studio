@@ -18,8 +18,8 @@ import { Plan } from "@/integrations/license";
  */
 export interface DiscordRuleEntry {
   guildId: string;
-  roles: string[];   // user needs at least ONE of these
-  plans: Plan[];     // plans granted when rule matches
+  roles: string[];
+  plans: Plan[];
 }
 
 /**
@@ -31,14 +31,11 @@ export interface DiscordRuleEntry {
  *   VITE_DISCORD_GUILD_ID=123456       (optional shorthand for single guild)
  */
 export const DISCORD_RULES: DiscordRuleEntry[] = [
-  // Example — replace with your actual guild/role IDs:
   {
     guildId: import.meta.env.VITE_DISCORD_GUILD_ID ?? '',
     roles: (import.meta.env.VITE_DISCORD_PRO_ROLES ?? '').split(',').map((r: string) => r.trim()).filter(Boolean),
     plans: ['basic', 'pro'],
   },
-  // Add more guilds/roles as needed:
-  // { guildId: '987654321', roles: ['roleIdC'], plans: ['basic'] },
 ];
 
 /**
