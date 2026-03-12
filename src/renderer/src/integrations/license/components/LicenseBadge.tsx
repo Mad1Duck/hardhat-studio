@@ -308,7 +308,7 @@ function StreamInfoTooltip({
             </div>
 
             {/* Pause/Resume */}
-            {/* <div style={{ marginTop: 8, display: 'flex', gap: 6, pointerEvents: 'all' }}>
+            <div style={{ marginTop: 8, display: 'flex', gap: 6, pointerEvents: 'all' }}>
               {activeStream?.paused ? (
                 <button
                   onClick={async (e) => {
@@ -368,7 +368,7 @@ function StreamInfoTooltip({
                   {localAction === 'pause' ? '↻ Pausing…' : '⏸ Pause Stream'}
                 </button>
               )}
-            </div> */}
+            </div>
             {localError && (
               <div
                 style={{

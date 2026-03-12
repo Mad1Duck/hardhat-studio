@@ -172,12 +172,12 @@ const NAV_GROUPS = [
         label: 'Accounts',
         tooltip: 'View Hardhat accounts and balances',
       },
-      // {
-      //   id: 'snapshots' as NavTab,
-      //   icon: Camera,
-      //   label: 'Snapshots',
-      //   tooltip: 'Save and restore EVM state snapshots',
-      // },
+      {
+        id: 'snapshots' as NavTab,
+        icon: Camera,
+        label: 'Snapshots',
+        tooltip: 'Save and restore EVM state snapshots',
+      },
       {
         id: 'explorer' as NavTab,
         icon: Layers,
@@ -190,12 +190,12 @@ const NAV_GROUPS = [
   {
     label: 'Analysis',
     items: [
-      // {
-      //   id: 'security' as NavTab,
-      //   icon: Shield,
-      //   label: 'Security',
-      //   tooltip: 'Static analysis for vulnerabilities',
-      // },
+      {
+        id: 'security' as NavTab,
+        icon: Shield,
+        label: 'Security',
+        tooltip: 'Static analysis for vulnerabilities',
+      },
       {
         id: 'gas' as NavTab,
         icon: Fuel,
