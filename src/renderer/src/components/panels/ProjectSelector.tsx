@@ -76,20 +76,23 @@ export default function ProjectSelector({ onSelect, lastProject, onJoinCollab }:
           ))}
         </div>
 
-        <Button
-          onClick={onJoinCollab}
-          className="flex items-center gap-2 px-4 py-2 text-sm transition-all border rounded-lg border-border text-muted-foreground hover:text-foreground hover:border-border/70">
-          <Users className="w-4 h-4" />
-          Join Collab Session
-        </Button>
+        <div className="flex flex-row gap-x-4">
+          <Button
+            onClick={onJoinCollab}
+            className="w-full gap-2 text-sm font-bold h-11"
+            style={{ boxShadow: '0 0 24px rgba(247, 147, 26, 0.3)' }}>
+            <Users className="w-4 h-4" />
+            Join Collab Session
+          </Button>
 
-        <Button
-          className="w-full gap-2 text-sm font-bold h-11"
-          style={{ boxShadow: '0 0 24px rgba(247, 147, 26, 0.3)' }}
-          onClick={onSelect}>
-          <FolderOpen className="w-4 h-4" />
-          Open Hardhat Project
-        </Button>
+          <Button
+            className="w-full gap-2 text-sm font-bold h-11"
+            style={{ boxShadow: '0 0 24px rgba(247, 147, 26, 0.3)' }}
+            onClick={onSelect}>
+            <FolderOpen className="w-4 h-4" />
+            Open Hardhat Project
+          </Button>
+        </div>
 
         {lastProject && (
           <p className="text-center text-[11px] text-muted-foreground mt-3 font-mono truncate">
