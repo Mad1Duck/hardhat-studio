@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { ContractAbi, DeployedContract, HardhatAccount, TxRecord } from '../../types';
-import { cn } from '../../lib/utils';
+import { ContractAbi, DeployedContract, HardhatAccount, TxRecord } from '../../../types';
+import { cn } from '../../../lib/utils';
 import {
   FlaskConical,
   Play,
@@ -23,9 +23,9 @@ import {
   Search,
   Package,
 } from 'lucide-react';
-import { Button } from '../ui/button';
-import { Input, Label, ScrollArea } from '../ui/primitives';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { Button } from '../../ui/button';
+import { Input, Label, ScrollArea } from '../../ui/primitives';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select';
 import {
   SimUser,
   SimEvent,
@@ -37,8 +37,8 @@ import {
   defaultPool,
   HH_ACCOUNTS,
   SimModule,
-} from '../modules/Simulation/types';
-import { ALL_MODULES, MODULE_CATEGORIES } from '../modules/Simulation/SimulationModule';
+} from '../../modules/Simulation/types';
+import { ALL_MODULES, MODULE_CATEGORIES } from '../../modules/Simulation/SimulationModule';
 // import {
 //   SimUser, SimEvent, SimEventType, PoolState, SimContext, ContractSupport,
 //   makeUser, defaultPool, HH_ACCOUNTS,
