@@ -28,9 +28,9 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import Editor, { useMonaco } from '@monaco-editor/react';
-import { ContractAbi, DeployedContract, HardhatAccount, TxRecord } from '../../types';
-import { cn } from '../../lib/utils';
-import { FlowControls } from '../ui/FlowControls';
+import { ContractAbi, DeployedContract, HardhatAccount, TxRecord } from '../../../types';
+import { cn } from '../../../lib/utils';
+import { FlowControls } from '../../ui/FlowControls';
 import {
   ListOrdered,
   Plus,
@@ -60,11 +60,11 @@ import {
   LayoutDashboard,
   Sparkles,
 } from 'lucide-react';
-import { Button } from '../ui/button';
-import { Input, Label, ScrollArea } from '../ui/primitives';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { Button } from '../../ui/button';
+import { Input, Label, ScrollArea } from '../../ui/primitives';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select';
 
-//  Types 
+//  Types
 type ActionType =
   | 'call'
   | 'send'
@@ -145,7 +145,7 @@ interface Props {
   onTxRecorded: (tx: TxRecord) => void;
 }
 
-//  Parallel group palette 
+//  Parallel group palette
 const GROUP_COLORS: Record<string, { color: string; bg: string; border: string }> = {
   A: { color: '#f472b6', bg: '#1f0015', border: '#ec4899' },
   B: { color: '#38bdf8', bg: '#0c1a2e', border: '#0ea5e9' },
@@ -155,7 +155,7 @@ const GROUP_COLORS: Record<string, { color: string; bg: string; border: string }
 };
 const GROUP_IDS = Object.keys(GROUP_COLORS);
 
-//  Action metadata 
+//  Action metadata
 const ACTIONS: {
   id: ActionType;
   icon: string;
@@ -329,7 +329,7 @@ function makeStep(action: ActionType): Step {
   };
 }
 
-//  Package detection 
+//  Package detection
 function detectImports(code: string): string[] {
   const pkgs = new Set<string>();
   const esImport = /import\s+(?:.*?\s+from\s+)?['"]([^'"./][^'"]*)['"]/g;
@@ -340,7 +340,7 @@ function detectImports(code: string): string[] {
   return [...pkgs];
 }
 
-//  RPC helper 
+//  RPC helper
 async function rpcCall(url: string, method: string, params: unknown[] = []) {
   const r = await fetch(url, {
     method: 'POST',
@@ -352,7 +352,7 @@ async function rpcCall(url: string, method: string, params: unknown[] = []) {
   return d.result;
 }
 
-//  Run a single step 
+//  Run a single step
 async function runStep(
   step: Step,
   deployed: DeployedContract[],
@@ -544,7 +544,7 @@ async function runStep(
   return { ok: false, message: 'Unknown action' };
 }
 
-//  Parallel batch builder 
+//  Parallel batch builder
 function buildBatches(steps: Step[]): Step[][] {
   const batches: Step[][] = [];
   const seen = new Set<string>();
@@ -568,7 +568,7 @@ function buildBatches(steps: Step[]): Step[][] {
   return batches;
 }
 
-//  Auto-layout: DAG topological layout (respects custom edges) 
+//  Auto-layout: DAG topological layout (respects custom edges)
 const NODE_WIDTH = 240;
 const NODE_HEIGHT = 160;
 const NODE_GAP_X = 80;
@@ -592,7 +592,7 @@ function computeLayout(
 ): Map<string, { x: number; y: number }> {
   const batches = buildBatches(steps);
 
-  //  1. Collect all node IDs (step + fork/join diamonds) 
+  //  1. Collect all node IDs (step + fork/join diamonds)
   const allNodeIds: string[] = [];
   const batchOfNode = new Map<string, Step[]>(); // nodeId → its batch
 
@@ -619,7 +619,7 @@ function computeLayout(
 
   const nodeSet = new Set(allNodeIds);
 
-  //  2. Build adjacency list from auto-edges + custom edges 
+  //  2. Build adjacency list from auto-edges + custom edges
   // Auto-edges: fork→step and step→join (from parallel groups)
   const adjOut = new Map<string, Set<string>>(); // src → targets
   const adjIn = new Map<string, Set<string>>(); // tgt → sources
@@ -652,7 +652,7 @@ function computeLayout(
   // Custom (user-drawn) edges
   customEdges.forEach((ce) => addEdge(ce.source, ce.target));
 
-  //  3. Topological sort → layer assignment (longest-path / critical-path) 
+  //  3. Topological sort → layer assignment (longest-path / critical-path)
   // Layer = max distance from any root (Kahn's BFS with longest-path variant)
   const layer = new Map<string, number>();
   const inDeg = new Map<string, number>();
@@ -683,7 +683,7 @@ function computeLayout(
     }
   });
 
-  //  4. Bucket nodes by layer 
+  //  4. Bucket nodes by layer
   const layerBuckets = new Map<number, string[]>();
   allNodeIds.forEach((id) => {
     const l = layer.get(id) ?? 0;
@@ -693,7 +693,7 @@ function computeLayout(
 
   const sortedLayers = Array.from(layerBuckets.keys()).sort((a, b) => a - b);
 
-  //  5. Assign X positions within each layer 
+  //  5. Assign X positions within each layer
   // Fork/join diamonds are always centered; step nodes spread horizontally.
   const positions = new Map<string, { x: number; y: number }>();
   let y = 60;
@@ -729,7 +729,7 @@ function computeLayout(
   return positions;
 }
 
-//  React Flow node 
+//  React Flow node
 type StepNodeData = {
   step: Step;
   index: number;
@@ -945,7 +945,7 @@ const StepNode = memo(({ data, selected }: NodeProps) => {
 });
 StepNode.displayName = 'StepNode';
 
-//  Fork / Join diamond nodes 
+//  Fork / Join diamond nodes
 type ForkJoinData = {
   kind: 'fork' | 'join';
   groupId: string;
@@ -1055,7 +1055,7 @@ ForkJoinNode.displayName = 'ForkJoinNode';
 
 const NODE_TYPES = { step: StepNode, forkjoin: ForkJoinNode };
 
-//  Build React Flow graph 
+//  Build React Flow graph
 function buildFlow(
   steps: Step[],
   activeStepId: string | null,
@@ -1198,7 +1198,7 @@ function buildFlow(
   return { nodes, edges };
 }
 
-//  Monaco Custom Script Editor 
+//  Monaco Custom Script Editor
 const ETHERS_TYPES = `
 declare const ethers: typeof import('ethers');
 declare const provider: import('ethers').JsonRpcProvider;
@@ -1300,7 +1300,7 @@ function MonacoScriptEditor({ value, onChange }: { value: string; onChange: (v: 
   );
 }
 
-//  Inner canvas component (needs ReactFlow context) 
+//  Inner canvas component (needs ReactFlow context)
 function CanvasInner({
   rfNodes,
   rfEdges,
@@ -1445,7 +1445,7 @@ function CanvasInner({
   );
 }
 
-//  Main component 
+//  Main component
 export default function ScenarioBuilderPanel({
   abis,
   deployedContracts,
@@ -1780,7 +1780,7 @@ export default function ScenarioBuilderPanel({
     setRunLogs([]);
   };
 
-  //  Parse .ts or .js file into steps (shared parser) 
+  //  Parse .ts or .js file into steps (shared parser)
   const parseScriptToSteps = (text: string): Step[] => {
     const steps: Step[] = [];
     const lines = text.split('\n');
@@ -1979,7 +1979,7 @@ export default function ScenarioBuilderPanel({
     return steps;
   };
 
-  //  Import .ts file 
+  //  Import .ts file
   const importTs = () => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -2008,7 +2008,7 @@ export default function ScenarioBuilderPanel({
     input.click();
   };
 
-  //  Import .js file 
+  //  Import .js file
   const importJs = () => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -2037,7 +2037,7 @@ export default function ScenarioBuilderPanel({
     input.click();
   };
 
-  //  Export JSON (full scenario including positions & edges) 
+  //  Export JSON (full scenario including positions & edges)
   const exportJson = () => {
     if (!active) return;
     // Capture current node positions from rfNodes
