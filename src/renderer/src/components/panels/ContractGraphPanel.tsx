@@ -1,7 +1,3 @@
-/**
- * ContractGraphPanel — React Flow + Mermaid edition
- * bun add @xyflow/react mermaid
- */
 import { useState, useEffect, useCallback, useRef, memo } from 'react';
 import {
   ReactFlow,
@@ -74,7 +70,7 @@ type ContractNodeData = {
   showFunctions: boolean;
 };
 
-//  Color tokens 
+//  Color tokens
 const TYPE = {
   contract: { bg: '#0d1624', border: '#3b82f6', accent: '#60a5fa', badge: '#1e3a5f', icon: '◈' },
   interface: { bg: '#130d24', border: '#8b5cf6', accent: '#a78bfa', badge: '#3b1f6e', icon: '◇' },
@@ -82,7 +78,7 @@ const TYPE = {
   abstract: { bg: '#1f1a0d', border: '#f59e0b', accent: '#fbbf24', badge: '#78350f', icon: '◉' },
 } as const;
 
-//  Mermaid init 
+//  Mermaid init
 mermaid.initialize({
   startOnLoad: false,
   theme: 'dark',
@@ -99,7 +95,7 @@ mermaid.initialize({
   },
 });
 
-//  Custom Contract Node 
+//  Custom Contract Node
 const ContractNode = memo(({ data, selected }: NodeProps) => {
   const d = data as ContractNodeData;
   const t = TYPE[d.nodeType];
@@ -231,7 +227,7 @@ const ContractNode = memo(({ data, selected }: NodeProps) => {
 });
 ContractNode.displayName = 'ContractNode';
 
-//  Custom Inheritance Edge 
+//  Custom Inheritance Edge
 function InheritEdge({
   id,
   sourceX,
@@ -293,7 +289,7 @@ function InheritEdge({
 const NODE_TYPES = { contract: ContractNode };
 const EDGE_TYPES = { inherit: InheritEdge };
 
-//  Main Component 
+//  Main Component
 export default function ContractGraphPanel({ abis, sourceFiles, projectPath }: Props) {
   const [rfNodes, setRfNodes] = useState<NodeFlow[]>([]);
   const [rfEdges, setRfEdges] = useState<Edge[]>([]);
@@ -318,7 +314,7 @@ export default function ContractGraphPanel({ abis, sourceFiles, projectPath }: P
   const [selectedNode, setSelectedNode] = useState<ContractNodeData | null>(null);
   const mermaidRef = useRef<HTMLDivElement>(null);
 
-  //  Build graph data 
+  //  Build graph data
   const buildGraph = useCallback(async () => {
     if (!abis.length) return;
     const sourceMap: Record<string, string> = {};
@@ -508,7 +504,7 @@ export default function ContractGraphPanel({ abis, sourceFiles, projectPath }: P
     );
   }, [showFunctions]);
 
-  //  Render Mermaid 
+  //  Render Mermaid
   useEffect(() => {
     if (view !== 'mermaid' || !mermaidCode) return;
     const render = async () => {
@@ -531,7 +527,7 @@ export default function ContractGraphPanel({ abis, sourceFiles, projectPath }: P
     setTimeout(() => setCopied(false), 1500);
   };
 
-  //  RENDER 
+  //  RENDER
   return (
     <div className="flex flex-col h-full overflow-hidden bg-background">
       {/*  Toolbar  */}

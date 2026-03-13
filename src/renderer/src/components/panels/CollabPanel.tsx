@@ -114,7 +114,6 @@ function ChatBubble({ msg, myRole }: { msg: CollabMessage; myRole: 'host' | 'gue
   );
 }
 
-// Node status + port picker component for host
 function NodePortSection({
   isNodeRunning,
   onRunCollabNode,

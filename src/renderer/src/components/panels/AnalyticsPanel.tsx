@@ -347,8 +347,6 @@ export default function AnalyticsPanel({ txHistory, deployedContracts, rpcUrl }:
   }, [rpcUrl, live, fetchLatest]);
 
   //  Merge txHistory (app) + chainTxs (chain) 
-  // App txHistory is the source of truth for named function calls
-  // chainTxs fills in any on-chain activity not captured by app
   const mergedTxs = useMemo(() => {
     const appHashes = new Set(txHistory.map(t => t.hash?.toLowerCase()));
     const chainOnly = chainTxs.filter(t => !appHashes.has(t.hash?.toLowerCase()));

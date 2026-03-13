@@ -16,7 +16,6 @@ import {
   Loader2,
 } from 'lucide-react';
 
-// Strip ANSI escape codes but keep some semantic meaning
 function parseAnsi(text: string): string {
   return text.replace(/\x1B\[[0-9;]*[mGKH]/g, '').replace(/\x1B\[[0-9;]*[A-Z]/g, '');
 }
