@@ -3,7 +3,7 @@ import { RpcBlock, RpcTx } from '../types';
 import { Layers, ArrowRight } from 'lucide-react';
 import { hex, shortAddr, timeAgo } from '../lib/rpcUtils';
 
-// ── List View ─────────────────────────────────────────────────────────────────
+//  List View 
 interface ListViewProps {
   allTxs: RpcTx[];
   blockCount: number;
@@ -54,7 +54,7 @@ export function ListView({ allTxs, blockCount, filterAddr, txHistory, onTxClick 
   );
 }
 
-// ── Blocks View ───────────────────────────────────────────────────────────────
+//  Blocks View 
 interface BlocksViewProps {
   blocks: RpcBlock[];
   onViewBlock: (block: RpcBlock) => void;

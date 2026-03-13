@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
-// ─── ERC-20 minimal ABI ───────────────────────────────────────────────────────
+//  ERC-20 minimal ABI 
 const ERC20_ABI = [
   'function name() view returns (string)',
   'function symbol() view returns (string)',
@@ -33,7 +33,7 @@ const ERC20_ABI = [
   'function totalSupply() view returns (uint256)',
 ];
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+//  Types 
 interface TokenInfo {
   address: string;
   name: string;
@@ -52,7 +52,7 @@ interface Props {
   onSelectAccount: (privateKey: string) => void;
 }
 
-// ─── RPC call helper ──────────────────────────────────────────────────────────
+//  RPC call helper 
 async function rpcCall(url: string, method: string, params: unknown[]) {
   const r = await fetch(url, {
     method: 'POST',
@@ -64,7 +64,7 @@ async function rpcCall(url: string, method: string, params: unknown[]) {
   return d.result;
 }
 
-// ─── eth_call helper ──────────────────────────────────────────────────────────
+//  eth_call helper 
 function encodeSelector(sig: string) {
   // tiny keccak-256 via a known selector list, or use a real encoder
   // We'll use eth_call with raw calldata via ABI encoding
@@ -227,7 +227,7 @@ function shortAddr(addr: string) {
   return `${addr.slice(0, 8)}…${addr.slice(-6)}`;
 }
 
-// ─── Deployed-contract token auto-discovery ───────────────────────────────────
+//  Deployed-contract token auto-discovery 
 // We try to detect if a deployed contract is ERC-20 by calling symbol()
 async function tryDecodeERC20(rpcUrl: string, address: string): Promise<string | null> {
   try {
@@ -239,7 +239,7 @@ async function tryDecodeERC20(rpcUrl: string, address: string): Promise<string |
   }
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
+//  Main component 
 export default function AccountsPanel({ rpcUrl, onSelectAccount }: Props) {
   const [accounts, setAccounts] = useState<HardhatAccount[]>([]);
   const [balances, setBalances] = useState<Record<string, string>>({});
@@ -403,7 +403,7 @@ export default function AccountsPanel({ rpcUrl, onSelectAccount }: Props) {
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-background">
-      {/* ── Header ── */}
+      {/*  Header  */}
       <div className="flex items-center justify-between flex-shrink-0 px-4 py-3 border-b border-border bg-card">
         <div className="flex items-center gap-2">
           <Wallet className="w-4 h-4 text-orange-400" />
@@ -436,7 +436,7 @@ export default function AccountsPanel({ rpcUrl, onSelectAccount }: Props) {
         </div>
       </div>
 
-      {/* ── Summary bar ── */}
+      {/*  Summary bar  */}
       <div className="grid flex-shrink-0 grid-cols-4 gap-px border-b bg-border border-border">
         {[
           { label: 'Accounts', value: accounts.length.toString(), color: 'text-foreground' },
@@ -458,7 +458,7 @@ export default function AccountsPanel({ rpcUrl, onSelectAccount }: Props) {
         ))}
       </div>
 
-      {/* ── Auto-discovered banner ── */}
+      {/*  Auto-discovered banner  */}
       {discoveredAddrs.length > 0 && (
         <div className="flex items-start gap-2 px-4 py-2.5 bg-violet-500/10 border-b border-violet-500/20 flex-shrink-0">
           <Sparkles className="w-3.5 h-3.5 text-violet-400 flex-shrink-0 mt-0.5" />
@@ -489,7 +489,7 @@ export default function AccountsPanel({ rpcUrl, onSelectAccount }: Props) {
       )}
 
       <div className="flex flex-1 min-w-0 overflow-hidden">
-        {/* ── Account list ── */}
+        {/*  Account list  */}
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
           <ScrollArea className="flex-1 overflow-y-auto">
             <div className="p-3 space-y-1.5">
@@ -709,7 +709,7 @@ export default function AccountsPanel({ rpcUrl, onSelectAccount }: Props) {
           </ScrollArea>
         </div>
 
-        {/* ── Token panel (right side) ── */}
+        {/*  Token panel (right side)  */}
         <div
           className={cn(
             'border-l border-border flex flex-col overflow-hidden transition-all flex-shrink-0',

@@ -64,7 +64,7 @@ import { Button } from '../ui/button';
 import { Input, Label, ScrollArea } from '../ui/primitives';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 
-// ─── Types ─────────────────────────────────────────────────────────────────
+//  Types 
 type ActionType =
   | 'call'
   | 'send'
@@ -145,7 +145,7 @@ interface Props {
   onTxRecorded: (tx: TxRecord) => void;
 }
 
-// ─── Parallel group palette ──────────────────────────────────────────────────
+//  Parallel group palette 
 const GROUP_COLORS: Record<string, { color: string; bg: string; border: string }> = {
   A: { color: '#f472b6', bg: '#1f0015', border: '#ec4899' },
   B: { color: '#38bdf8', bg: '#0c1a2e', border: '#0ea5e9' },
@@ -155,7 +155,7 @@ const GROUP_COLORS: Record<string, { color: string; bg: string; border: string }
 };
 const GROUP_IDS = Object.keys(GROUP_COLORS);
 
-// ─── Action metadata ────────────────────────────────────────────────────────
+//  Action metadata 
 const ACTIONS: {
   id: ActionType;
   icon: string;
@@ -329,7 +329,7 @@ function makeStep(action: ActionType): Step {
   };
 }
 
-// ─── Package detection ───────────────────────────────────────────────────────
+//  Package detection 
 function detectImports(code: string): string[] {
   const pkgs = new Set<string>();
   const esImport = /import\s+(?:.*?\s+from\s+)?['"]([^'"./][^'"]*)['"]/g;
@@ -340,7 +340,7 @@ function detectImports(code: string): string[] {
   return [...pkgs];
 }
 
-// ─── RPC helper ─────────────────────────────────────────────────────────────
+//  RPC helper 
 async function rpcCall(url: string, method: string, params: unknown[] = []) {
   const r = await fetch(url, {
     method: 'POST',
@@ -352,7 +352,7 @@ async function rpcCall(url: string, method: string, params: unknown[] = []) {
   return d.result;
 }
 
-// ─── Run a single step ───────────────────────────────────────────────────────
+//  Run a single step 
 async function runStep(
   step: Step,
   deployed: DeployedContract[],
@@ -544,7 +544,7 @@ async function runStep(
   return { ok: false, message: 'Unknown action' };
 }
 
-// ─── Parallel batch builder ──────────────────────────────────────────────────
+//  Parallel batch builder 
 function buildBatches(steps: Step[]): Step[][] {
   const batches: Step[][] = [];
   const seen = new Set<string>();
@@ -568,7 +568,7 @@ function buildBatches(steps: Step[]): Step[][] {
   return batches;
 }
 
-// ─── Auto-layout: DAG topological layout (respects custom edges) ─────────────
+//  Auto-layout: DAG topological layout (respects custom edges) 
 const NODE_WIDTH = 240;
 const NODE_HEIGHT = 160;
 const NODE_GAP_X = 80;
@@ -592,7 +592,7 @@ function computeLayout(
 ): Map<string, { x: number; y: number }> {
   const batches = buildBatches(steps);
 
-  // ── 1. Collect all node IDs (step + fork/join diamonds) ──────────────────
+  //  1. Collect all node IDs (step + fork/join diamonds) 
   const allNodeIds: string[] = [];
   const batchOfNode = new Map<string, Step[]>(); // nodeId → its batch
 
@@ -619,7 +619,7 @@ function computeLayout(
 
   const nodeSet = new Set(allNodeIds);
 
-  // ── 2. Build adjacency list from auto-edges + custom edges ───────────────
+  //  2. Build adjacency list from auto-edges + custom edges 
   // Auto-edges: fork→step and step→join (from parallel groups)
   const adjOut = new Map<string, Set<string>>(); // src → targets
   const adjIn = new Map<string, Set<string>>(); // tgt → sources
@@ -652,7 +652,7 @@ function computeLayout(
   // Custom (user-drawn) edges
   customEdges.forEach((ce) => addEdge(ce.source, ce.target));
 
-  // ── 3. Topological sort → layer assignment (longest-path / critical-path) ─
+  //  3. Topological sort → layer assignment (longest-path / critical-path) 
   // Layer = max distance from any root (Kahn's BFS with longest-path variant)
   const layer = new Map<string, number>();
   const inDeg = new Map<string, number>();
@@ -683,7 +683,7 @@ function computeLayout(
     }
   });
 
-  // ── 4. Bucket nodes by layer ─────────────────────────────────────────────
+  //  4. Bucket nodes by layer 
   const layerBuckets = new Map<number, string[]>();
   allNodeIds.forEach((id) => {
     const l = layer.get(id) ?? 0;
@@ -693,7 +693,7 @@ function computeLayout(
 
   const sortedLayers = Array.from(layerBuckets.keys()).sort((a, b) => a - b);
 
-  // ── 5. Assign X positions within each layer ───────────────────────────────
+  //  5. Assign X positions within each layer 
   // Fork/join diamonds are always centered; step nodes spread horizontally.
   const positions = new Map<string, { x: number; y: number }>();
   let y = 60;
@@ -729,7 +729,7 @@ function computeLayout(
   return positions;
 }
 
-// ─── React Flow node ─────────────────────────────────────────────────────────
+//  React Flow node 
 type StepNodeData = {
   step: Step;
   index: number;
@@ -945,7 +945,7 @@ const StepNode = memo(({ data, selected }: NodeProps) => {
 });
 StepNode.displayName = 'StepNode';
 
-// ─── Fork / Join diamond nodes ────────────────────────────────────────────────
+//  Fork / Join diamond nodes 
 type ForkJoinData = {
   kind: 'fork' | 'join';
   groupId: string;
@@ -1055,7 +1055,7 @@ ForkJoinNode.displayName = 'ForkJoinNode';
 
 const NODE_TYPES = { step: StepNode, forkjoin: ForkJoinNode };
 
-// ─── Build React Flow graph ───────────────────────────────────────────────────
+//  Build React Flow graph 
 function buildFlow(
   steps: Step[],
   activeStepId: string | null,
@@ -1198,7 +1198,7 @@ function buildFlow(
   return { nodes, edges };
 }
 
-// ─── Monaco Custom Script Editor ─────────────────────────────────────────────
+//  Monaco Custom Script Editor 
 const ETHERS_TYPES = `
 declare const ethers: typeof import('ethers');
 declare const provider: import('ethers').JsonRpcProvider;
@@ -1300,7 +1300,7 @@ function MonacoScriptEditor({ value, onChange }: { value: string; onChange: (v: 
   );
 }
 
-// ─── Inner canvas component (needs ReactFlow context) ────────────────────────
+//  Inner canvas component (needs ReactFlow context) 
 function CanvasInner({
   rfNodes,
   rfEdges,
@@ -1372,7 +1372,7 @@ function CanvasInner({
         }}
       />
 
-      {/* ── Beautify button (top-right of canvas) ── */}
+      {/*  Beautify button (top-right of canvas)  */}
       <Panel position="top-right">
         <button
           onClick={handleBeautify}
@@ -1445,7 +1445,7 @@ function CanvasInner({
   );
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
+//  Main component 
 export default function ScenarioBuilderPanel({
   abis,
   deployedContracts,
@@ -1780,7 +1780,7 @@ export default function ScenarioBuilderPanel({
     setRunLogs([]);
   };
 
-  // ── Parse .ts or .js file into steps (shared parser) ─────────────────────
+  //  Parse .ts or .js file into steps (shared parser) 
   const parseScriptToSteps = (text: string): Step[] => {
     const steps: Step[] = [];
     const lines = text.split('\n');
@@ -1979,7 +1979,7 @@ export default function ScenarioBuilderPanel({
     return steps;
   };
 
-  // ── Import .ts file ────────────────────────────────────────────────────────
+  //  Import .ts file 
   const importTs = () => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -2008,7 +2008,7 @@ export default function ScenarioBuilderPanel({
     input.click();
   };
 
-  // ── Import .js file ────────────────────────────────────────────────────────
+  //  Import .js file 
   const importJs = () => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -2037,7 +2037,7 @@ export default function ScenarioBuilderPanel({
     input.click();
   };
 
-  // ── Export JSON (full scenario including positions & edges) ──────────────
+  //  Export JSON (full scenario including positions & edges) 
   const exportJson = () => {
     if (!active) return;
     // Capture current node positions from rfNodes
@@ -2094,7 +2094,7 @@ export default function ScenarioBuilderPanel({
 
   return (
     <div className="flex h-full overflow-hidden bg-background">
-      {/* ── Sidebar ── */}
+      {/*  Sidebar  */}
       <div className="flex flex-col flex-shrink-0 border-r w-52 border-border bg-card">
         <div className="px-3 py-2.5 border-b border-border">
           <div className="flex items-center gap-2 mb-2">
@@ -2182,7 +2182,7 @@ export default function ScenarioBuilderPanel({
         </div>
       </div>
 
-      {/* ── Main area ── */}
+      {/*  Main area  */}
       {!active ? (
         <div className="flex flex-col items-center justify-center flex-1 gap-4 text-muted-foreground/25">
           <ListOrdered className="w-14 h-14 opacity-15" />
@@ -2195,7 +2195,7 @@ export default function ScenarioBuilderPanel({
         </div>
       ) : (
         <div className="flex flex-1 min-w-0 overflow-hidden">
-          {/* ── Canvas + toolbar ── */}
+          {/*  Canvas + toolbar  */}
           <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
             {/* Toolbar */}
             <div className="flex items-center flex-shrink-0 gap-2 px-3 py-2 border-b border-border bg-card/50">
@@ -2298,7 +2298,7 @@ export default function ScenarioBuilderPanel({
               </div>
             </div>
 
-            {/* ── CANVAS VIEW ── */}
+            {/*  CANVAS VIEW  */}
             {view === 'canvas' && (
               <div className="relative flex-1 min-h-0">
                 <ReactFlowProvider>
@@ -2317,7 +2317,7 @@ export default function ScenarioBuilderPanel({
               </div>
             )}
 
-            {/* ── LIST VIEW ── */}
+            {/*  LIST VIEW  */}
             {view === 'list' && (
               <ScrollArea className="flex-1 overflow-y-auto">
                 <div className="p-3 space-y-1.5">
@@ -2422,7 +2422,7 @@ export default function ScenarioBuilderPanel({
             )}
           </div>
 
-          {/* ── Right panel ── */}
+          {/*  Right panel  */}
           <div className="flex flex-col flex-shrink-0 overflow-hidden border-l w-72 border-border bg-card/30">
             {selectedStep && selectedMeta ? (
               <div className="flex flex-col h-full overflow-hidden">
@@ -2457,7 +2457,7 @@ export default function ScenarioBuilderPanel({
                       />
                     </div>
 
-                    {/* ── Parallel Group — controls runtime execution ── */}
+                    {/*  Parallel Group — controls runtime execution  */}
                     <div>
                       <Label className="text-[10px] mb-1.5 flex items-center gap-1.5 block">
                         <GitBranch className="w-3 h-3 text-indigo-400" />
@@ -2520,7 +2520,7 @@ export default function ScenarioBuilderPanel({
                       )}
                     </div>
 
-                    {/* ── Flow Arrows — visual only ── */}
+                    {/*  Flow Arrows — visual only  */}
                     <div>
                       <Label className="text-[10px] mb-1.5 flex items-center gap-1.5 block">
                         <ArrowRight className="w-3 h-3 text-indigo-400" />
@@ -3020,7 +3020,7 @@ export default function ScenarioBuilderPanel({
                 </ScrollArea>
               </div>
             ) : (
-              /* ── Flow Arrows / Run Log tabs ── */
+              /*  Flow Arrows / Run Log tabs  */
               <div className="flex flex-col h-full overflow-hidden">
                 {/* Tab header */}
                 <div className="flex flex-shrink-0 border-b border-border">
@@ -3067,7 +3067,7 @@ export default function ScenarioBuilderPanel({
                   ))}
                 </div>
 
-                {/* ── FLOW ARROWS TAB ── */}
+                {/*  FLOW ARROWS TAB  */}
                 {rightTab === 'connections' && (
                   <div className="flex flex-col flex-1 overflow-hidden">
                     {/* Visual-only banner */}
@@ -3196,7 +3196,7 @@ export default function ScenarioBuilderPanel({
                   </div>
                 )}
 
-                {/* ── RUN LOG TAB ── */}
+                {/*  RUN LOG TAB  */}
                 {rightTab === 'log' && (
                   <ScrollArea className="flex-1 overflow-y-auto">
                     <div className="p-2 space-y-0.5">

@@ -16,7 +16,7 @@ import {
   Grid3X3,
 } from 'lucide-react';
 
-// ─── IPFS ─────────────────────────────────────────────────────────────────────
+//  IPFS 
 const GATEWAYS = [
   { label: 'ipfs.io', url: 'https://ipfs.io/ipfs/' },
   { label: 'Cloudflare', url: 'https://cloudflare-ipfs.com/ipfs/' },
@@ -44,7 +44,7 @@ const isIPFS = (uri: string) =>
   /^Qm[1-9A-HJ-NP-Za-km-z]{44}/.test(uri) ||
   /^ba[a-z2-7]{56,}/.test(uri);
 
-// ─── RPC helpers ──────────────────────────────────────────────────────────────
+//  RPC helpers 
 async function rpc(url: string, method: string, params: unknown[]) {
   const r = await fetch(url, {
     method: 'POST',
@@ -72,7 +72,7 @@ function decStr(hex: string): string {
 
 const decAddr = (hex: string) => (hex && hex !== '0x' ? '0x' + hex.slice(-40) : '');
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+//  Types 
 interface NFTToken {
   id: string;
   contractAddress: string;
@@ -105,7 +105,7 @@ interface Props {
   deployedContracts: DeployedContract[];
 }
 
-// ─── Fetch single NFT ─────────────────────────────────────────────────────────
+//  Fetch single NFT 
 async function fetchNFT(
   rpcUrl: string,
   addr: string,
@@ -160,7 +160,7 @@ async function fetchNFT(
   }
 }
 
-// ─── Auto-detect ──────────────────────────────────────────────────────────────
+//  Auto-detect 
 async function autoDetect(rpcUrl: string, addr: string): Promise<AutoDetectResult | null> {
   const a = addr.toLowerCase();
   try {
@@ -239,7 +239,7 @@ async function autoDetect(rpcUrl: string, addr: string): Promise<AutoDetectResul
   }
 }
 
-// ─── Scan progress ────────────────────────────────────────────────────────────
+//  Scan progress 
 interface ScanProgress {
   phase: 'idle' | 'info' | 'scanning' | 'done' | 'error';
   contractName: string;
@@ -376,7 +376,7 @@ async function deepScan(
   return { address: addr, name: name || addr.slice(0, 8), symbol, standard, totalSupply, tokenIds };
 }
 
-// ─── Add / Scan form ──────────────────────────────────────────────────────────
+//  Add / Scan form 
 function AddForm({
   rpcUrl,
   onClose,
@@ -609,7 +609,7 @@ function AddForm({
   );
 }
 
-// ─── NFT Card ─────────────────────────────────────────────────────────────────
+//  NFT Card 
 function NFTCard({
   token,
   gw,
@@ -670,7 +670,7 @@ function NFTCard({
   );
 }
 
-// ─── Detail Modal ─────────────────────────────────────────────────────────────
+//  Detail Modal 
 function NFTDetail({
   token,
   gw,
@@ -830,7 +830,7 @@ function NFTDetail({
   );
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
+//  Main 
 export default function NFTViewerPanel({ rpcUrl, deployedContracts }: Props) {
   const [tokens, setTokens] = useState<NFTToken[]>(() => {
     try {
@@ -844,13 +844,13 @@ export default function NFTViewerPanel({ rpcUrl, deployedContracts }: Props) {
   const [showSettings, setShowSettings] = useState(false);
   const [search, setSearch] = useState('');
 
-  // ── Gateway state ──────────────────────────────────────────────────────────
+  //  Gateway state 
   const [gateway, setGatewayState] = useState(
     () => localStorage.getItem('nft_gw2') || 'https://ipfs.io/ipfs/',
   );
   const [gwStatus, setGwStatus] = useState<'ok' | 'error' | 'checking' | null>(null);
 
-  // ── Custom gateway state ───────────────────────────────────────────────────
+  //  Custom gateway state 
   const [customGwName, setCustomGwName] = useState('');
   const [customGwUrl, setCustomGwUrl] = useState('');
   const [savedCustomGws, setSavedCustomGws] = useState<{ label: string; url: string }[]>(() => {
@@ -861,10 +861,10 @@ export default function NFTViewerPanel({ rpcUrl, deployedContracts }: Props) {
     }
   });
 
-  // ── Auto-detect banners ────────────────────────────────────────────────────
+  //  Auto-detect banners 
   const [banners, setBanners] = useState<AutoDetectResult[]>([]);
 
-  // ── ERC-1155 balance discovery across all Hardhat accounts ────────────────
+  //  ERC-1155 balance discovery across all Hardhat accounts 
   const HH_ACCOUNTS_NFT = [
     '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
     '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
@@ -979,7 +979,7 @@ export default function NFTViewerPanel({ rpcUrl, deployedContracts }: Props) {
     setDiscoveringNft(false);
   };
 
-  // ── Persist custom gateways ────────────────────────────────────────────────
+  //  Persist custom gateways 
   const persistCustomGws = (list: { label: string; url: string }[]) => {
     setSavedCustomGws(list);
     try {
@@ -1143,7 +1143,7 @@ export default function NFTViewerPanel({ rpcUrl, deployedContracts }: Props) {
 
   return (
     <div className="flex flex-col h-full bg-[#0f0f1a] overflow-hidden">
-      {/* ── Top bar ── */}
+      {/*  Top bar  */}
       <div className="flex items-center gap-2.5 px-4 py-2.5 border-b border-white/5 flex-shrink-0 bg-[#13131f]">
         <Grid3X3 className="flex-shrink-0 w-4 h-4 text-violet-400" />
         <span className="text-sm font-semibold text-white/90">NFTs</span>
@@ -1206,7 +1206,7 @@ export default function NFTViewerPanel({ rpcUrl, deployedContracts }: Props) {
         </div>
       </div>
 
-      {/* ── Settings ── */}
+      {/*  Settings  */}
       {showSettings && (
         <div className="px-4 py-3 border-b border-white/5 bg-[#13131f] flex-shrink-0 space-y-3">
           <p className="text-[9px] text-white/25 uppercase tracking-widest">IPFS Gateway</p>
@@ -1297,12 +1297,12 @@ export default function NFTViewerPanel({ rpcUrl, deployedContracts }: Props) {
         </div>
       )}
 
-      {/* ── Add / Scan form ── */}
+      {/*  Add / Scan form  */}
       {showAdd && (
         <AddForm rpcUrl={rpcUrl} onClose={() => setShowAdd(false)} onImport={importDetected} />
       )}
 
-      {/* ── Auto-detect banners ── */}
+      {/*  Auto-detect banners  */}
       {banners.map((r) => (
         <div
           key={r.address}
@@ -1336,7 +1336,7 @@ export default function NFTViewerPanel({ rpcUrl, deployedContracts }: Props) {
         </div>
       ))}
 
-      {/* ── Balance Discover Panel ── */}
+      {/*  Balance Discover Panel  */}
       {showNftDiscover && (
         <div className="border-b border-white/5 bg-[#13131f] flex-shrink-0 max-h-52 overflow-y-auto">
           <div className="flex items-center justify-between px-4 py-2 sticky top-0 bg-[#13131f] border-b border-white/5">
@@ -1401,7 +1401,7 @@ export default function NFTViewerPanel({ rpcUrl, deployedContracts }: Props) {
         </div>
       )}
 
-      {/* ── Grid ── */}
+      {/*  Grid  */}
       <div className="flex-1 px-4 py-4 overflow-y-auto">
         {tokens.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-4 text-center select-none">
@@ -1458,7 +1458,7 @@ export default function NFTViewerPanel({ rpcUrl, deployedContracts }: Props) {
         )}
       </div>
 
-      {/* ── Detail modal ── */}
+      {/*  Detail modal  */}
       {selected && (
         <NFTDetail
           token={selected}

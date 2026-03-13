@@ -130,7 +130,7 @@ main().catch(console.error);
 
 type TemplateKey = keyof typeof TEMPLATES;
 
-// ─── Monaco theme registration ─────────────────────────────────────────────
+//  Monaco theme registration 
 function useHardhatTheme(monaco: ReturnType<typeof useMonaco>) {
   useEffect(() => {
     if (!monaco) return;
@@ -343,7 +343,7 @@ export default function ScriptsPanel({ projectPath, projectInfo, onRunInTerminal
 
   return (
     <div className="flex h-full overflow-hidden">
-      {/* ── Left sidebar ── */}
+      {/*  Left sidebar  */}
       <div className="flex flex-col flex-shrink-0 w-64 border-r border-border bg-card">
         <div className="px-3 py-2.5 border-b border-border space-y-2">
           <div className="flex items-center justify-between">
@@ -464,7 +464,7 @@ export default function ScriptsPanel({ projectPath, projectInfo, onRunInTerminal
         </div>
       </div>
 
-      {/* ── Right: editor area ── */}
+      {/*  Right: editor area  */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         {/* New file wizard */}
         {mode === 'new' && (

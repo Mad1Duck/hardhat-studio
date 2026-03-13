@@ -192,7 +192,7 @@ export default function LiquidityPoolPanel({ deployedContracts = [], rpcUrl = 'h
 
   return (
     <div className="flex h-full overflow-hidden">
-      {/* ── Left ── */}
+      {/*  Left  */}
       <div className="w-80 flex-shrink-0 border-r border-border bg-card flex flex-col overflow-hidden">
         {/* Header */}
         <div className="px-4 py-3 border-b border-border space-y-2">
@@ -373,7 +373,7 @@ export default function LiquidityPoolPanel({ deployedContracts = [], rpcUrl = 'h
         </div>
       </div>
 
-      {/* ── Right ── */}
+      {/*  Right  */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Stats bar */}
         <div className="grid grid-cols-4 gap-px bg-border border-b border-border flex-shrink-0">

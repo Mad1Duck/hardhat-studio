@@ -70,9 +70,9 @@ interface ERCStandard {
   since?: string; // EIP number or year
 }
 
-// ─── BUILT-IN STANDARDS ────────────────────────────────────────────────────
+//  BUILT-IN STANDARDS 
 const STANDARDS: ERCStandard[] = [
-  // ── TOKENS ──────────────────────────────────────────────
+  //  TOKENS 
   {
     id: 'ERC-20',
     name: 'Fungible Token',
@@ -258,7 +258,7 @@ const STANDARDS: ERCStandard[] = [
     tags: ['token', 'safety', 'notifications'],
     testNote: "Prevents token loss to contracts that don't handle ERC-20",
   },
-  // ── ACCOUNT ABSTRACTION ─────────────────────────────────
+  //  ACCOUNT ABSTRACTION 
   {
     id: 'ERC-4337',
     name: 'Account Abstraction via EntryPoint',
@@ -296,7 +296,7 @@ const STANDARDS: ERCStandard[] = [
     tags: ['account-abstraction', 'modular', 'plugins'],
     testNote: 'Draft stage — implementations vary across teams (Alchemy, Biconomy)',
   },
-  // ── SIGNATURES ──────────────────────────────────────────
+  //  SIGNATURES 
   {
     id: 'EIP-712',
     name: 'Typed Structured Data Signing',
@@ -327,7 +327,7 @@ const STANDARDS: ERCStandard[] = [
     tags: ['signature', 'wallet', 'contract-signature'],
     testNote: 'Check return value equals bytes4(0x1626ba7e)',
   },
-  // ── GAS / NETWORK ───────────────────────────────────────
+  //  GAS / NETWORK 
   {
     id: 'EIP-1559',
     name: 'Fee Market Reform',
@@ -373,7 +373,7 @@ const STANDARDS: ERCStandard[] = [
     tags: ['account-abstraction', 'eoa', 'pectra'],
     testNote: 'Not yet deployed on mainnet. Part of upcoming Pectra hardfork.',
   },
-  // ── PROXY ───────────────────────────────────────────────
+  //  PROXY 
   {
     id: 'EIP-1967',
     name: 'Standard Proxy Storage Slots',
@@ -427,7 +427,7 @@ const STANDARDS: ERCStandard[] = [
     tags: ['proxy', 'diamond', 'facets', 'upgradeable'],
     testNote: 'Use Proxy panel to inspect facet addresses and function selectors',
   },
-  // ── ACCESS CONTROL ──────────────────────────────────────
+  //  ACCESS CONTROL 
   {
     id: 'OZ-Ownable',
     name: 'Ownable (Single Owner)',
@@ -480,7 +480,7 @@ const STANDARDS: ERCStandard[] = [
     tags: ['access-control', 'roles', 'openzeppelin'],
     testNote: 'DEFAULT_ADMIN_ROLE = bytes32(0). Check for hasRole in ABI.',
   },
-  // ── GOVERNANCE ──────────────────────────────────────────
+  //  GOVERNANCE 
   {
     id: 'ERC-20Votes',
     name: 'Governance Votes (ERC-20)',
@@ -537,7 +537,7 @@ const STANDARDS: ERCStandard[] = [
     tags: ['governance', 'dao', 'voting', 'timelock'],
     testNote: 'Deploy with GovernorVotes + GovernorTimelockControl for full setup',
   },
-  // ── DEFI ────────────────────────────────────────────────
+  //  DEFI 
   {
     id: 'Uniswap-V2',
     name: 'Uniswap V2 Interface',
@@ -607,7 +607,7 @@ const STANDARDS: ERCStandard[] = [
     tags: ['lending', 'defi', 'aave', 'borrowing'],
     testNote: 'Use DeFi Simulation panel for lending protocol testing',
   },
-  // ── CROSS-CHAIN ─────────────────────────────────────────
+  //  CROSS-CHAIN 
   {
     id: 'LayerZero',
     name: 'LayerZero OApp',
@@ -639,7 +639,7 @@ const STANDARDS: ERCStandard[] = [
     tags: ['cross-chain', 'intents', 'chain-abstraction'],
     testNote: 'Used by Across, Uniswap X. Still being finalized.',
   },
-  // ── INTROSPECTION ───────────────────────────────────────
+  //  INTROSPECTION 
   {
     id: 'ERC-165',
     name: 'Standard Interface Detection',
@@ -672,7 +672,7 @@ const STANDARDS: ERCStandard[] = [
   },
 ];
 
-// ─── CATEGORY META ─────────────────────────────────────────────────────────
+//  CATEGORY META 
 const CATEGORY_META: Record<ERCCategory, { label: string; icon: string; color: string }> = {
   token: { label: 'Tokens', icon: '🪙', color: 'blue' },
   nft: { label: 'NFT', icon: '🎨', color: 'purple' },
@@ -687,7 +687,7 @@ const CATEGORY_META: Record<ERCCategory, { label: string; icon: string; color: s
   custom: { label: 'Custom', icon: '⚙️', color: 'gray' },
 };
 
-// ─── DEFAULT JSON TEMPLATE ─────────────────────────────────────────────────
+//  DEFAULT JSON TEMPLATE 
 const DEFAULT_CUSTOM_JSON = `{
   "id": "ERC-XXXX",
   "name": "My Custom Standard",
@@ -713,7 +713,7 @@ const DEFAULT_CUSTOM_JSON = `{
   "tags": ["custom", "your-tag"]
 }`;
 
-// ─── HELPERS ───────────────────────────────────────────────────────────────
+//  HELPERS 
 const statusColor: Record<string, string> = {
   final: 'text-green-400 bg-green-500/10',
   draft: 'text-amber-400 bg-amber-500/10',
@@ -739,7 +739,7 @@ const catColor = (cat: ERCCategory) => {
   return map[cat] || 'text-muted-foreground bg-muted';
 };
 
-// ─── MAIN COMPONENT ────────────────────────────────────────────────────────
+//  MAIN COMPONENT 
 export default function ERCStandardsPanel({ abis, deployedContracts, rpcUrl }: Props) {
   const [search, setSearch] = useState('');
   const [selectedCat, setSelectedCat] = useState<ERCCategory | 'all'>('all');
@@ -843,7 +843,7 @@ export default function ERCStandardsPanel({ abis, deployedContracts, rpcUrl }: P
     setActiveTab('add');
   };
 
-  // ── File: Load JSON from disk ──────────────────────────────────────────────
+  //  File: Load JSON from disk 
   const handleLoadFile = async () => {
     const filePath = await window.api.showOpenFileDialog({
       title: 'Open ERC Standard JSON',
@@ -872,7 +872,7 @@ export default function ERCStandardsPanel({ abis, deployedContracts, rpcUrl }: P
     }
   };
 
-  // ── File: Save JSON to disk (overwrite) ───────────────────────────────────
+  //  File: Save JSON to disk (overwrite) 
   const handleSaveFile = async () => {
     if (!editorFilePath) {
       handleSaveFileAs();
@@ -885,7 +885,7 @@ export default function ERCStandardsPanel({ abis, deployedContracts, rpcUrl }: P
     } else showFileStatus('Save failed', false);
   };
 
-  // ── File: Save As ──────────────────────────────────────────────────────────
+  //  File: Save As 
   const handleSaveFileAs = async () => {
     let defaultName = 'custom-standard.json';
     try {
@@ -912,7 +912,7 @@ export default function ERCStandardsPanel({ abis, deployedContracts, rpcUrl }: P
     }
   };
 
-  // ── Export all custom standards as one JSON file ───────────────────────────
+  //  Export all custom standards as one JSON file 
   const handleExportAll = async () => {
     if (customStandards.length === 0) {
       showFileStatus('No custom standards to export', false);
@@ -929,7 +929,7 @@ export default function ERCStandardsPanel({ abis, deployedContracts, rpcUrl }: P
     else showFileStatus('Export failed', false);
   };
 
-  // ── Import standards from a JSON file (array or single object) ────────────
+  //  Import standards from a JSON file (array or single object) 
   const handleImportFile = async () => {
     const filePath = await window.api.showOpenFileDialog({
       title: 'Import Custom Standards',
@@ -1012,10 +1012,10 @@ export default function ERCStandardsPanel({ abis, deployedContracts, rpcUrl }: P
     setTimeout(() => setCopiedId(''), 1500);
   };
 
-  // ── RENDER ─────────────────────────────────────────────────────────────
+  //  RENDER 
   return (
     <div className="flex h-full overflow-hidden bg-background">
-      {/* ── LEFT PANEL ── */}
+      {/*  LEFT PANEL  */}
       <div className="flex flex-col flex-shrink-0 border-r w-72 border-border bg-card">
         {/* Header */}
         <div className="px-3 py-3 space-y-2 border-b border-border">
@@ -1231,7 +1231,7 @@ export default function ERCStandardsPanel({ abis, deployedContracts, rpcUrl }: P
         </div>
       </div>
 
-      {/* ── RIGHT PANEL ── */}
+      {/*  RIGHT PANEL  */}
       <div className="flex flex-col flex-1 overflow-hidden">
         {/* Tab bar (only shown when a standard is selected) */}
         {(selected || activeTab === 'add') && (
@@ -1271,7 +1271,7 @@ export default function ERCStandardsPanel({ abis, deployedContracts, rpcUrl }: P
           </div>
         )}
 
-        {/* ── ADD/EDIT PANEL (Monaco) ── */}
+        {/*  ADD/EDIT PANEL (Monaco)  */}
         {activeTab === 'add' && (
           <div className="flex flex-col flex-1 overflow-hidden">
             {/* Toolbar row 1: title + file path */}
@@ -1422,7 +1422,7 @@ export default function ERCStandardsPanel({ abis, deployedContracts, rpcUrl }: P
           </div>
         )}
 
-        {/* ── DETAIL PANEL ── */}
+        {/*  DETAIL PANEL  */}
         {activeTab === 'detail' && !selected && (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center">
             <BookOpen className="w-16 h-16 mb-4 text-muted-foreground/10" />

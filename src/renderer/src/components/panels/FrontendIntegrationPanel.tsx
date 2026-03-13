@@ -189,7 +189,7 @@ import ${name}ABI from './abis/${name}.json'
 
 const CONTRACT_ADDRESS = '${addr}' as const
 
-// ── Read hooks ──
+//  Read hooks 
 ${reads.map(fn => `export function use${name}${capitalize(fn.name || 'Read')}(${(fn.inputs || []).map(i => `${i.name || 'arg'}: ${solToTs(i.type)}`).join(', ')}) {
   return useReadContract({
     address: CONTRACT_ADDRESS,
@@ -198,7 +198,7 @@ ${reads.map(fn => `export function use${name}${capitalize(fn.name || 'Read')}(${
   })
 }`).join('\n\n')}
 
-// ── Write hooks ──
+//  Write hooks 
 ${writes.map(fn => `export function use${name}${capitalize(fn.name || 'Write')}() {
   const { writeContract, isPending, isSuccess, data: txHash } = useWriteContract()
   const execute = (${(fn.inputs || []).map(i => `${i.name || 'arg'}: ${solToTs(i.type)}`).join(', ')}) => {
@@ -211,7 +211,7 @@ ${writes.map(fn => `export function use${name}${capitalize(fn.name || 'Write')}(
   return { execute, isPending, isSuccess, txHash }
 }`).join('\n\n')}
 
-// ── Wallet connection ──
+//  Wallet connection 
 export function use${name}Wallet() {
   const { address, isConnected } = useAccount()
   const { connect } = useConnect()

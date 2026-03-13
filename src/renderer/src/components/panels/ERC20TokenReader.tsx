@@ -67,7 +67,7 @@ interface ChainTxEvent {
   args?: string; // decoded args summary
 }
 
-// ─── Known ERC-20 event/function selectors ────────────────────────────────────
+//  Known ERC-20 event/function selectors 
 const FN_LABELS: Record<string, string> = {
   '0xa9059cbb': 'transfer',
   '0x23b872dd': 'transferFrom',
@@ -110,7 +110,7 @@ const HH_ACCOUNTS = [
   { idx: 9, address: '0xa0Ee7A142d267C1f36714E4a8F75612F20a79720', label: 'Account 9' },
 ];
 
-// ─── RPC helpers ──────────────────────────────────────────────────────────────
+//  RPC helpers 
 async function rpcCall(url: string, method: string, params: any[] = []): Promise<any> {
   const r = await fetch(url, {
     method: 'POST',
@@ -144,7 +144,7 @@ async function fetchLiveAccounts(rpcUrl: string) {
   return HH_ACCOUNTS;
 }
 
-// ─── Decode helpers ───────────────────────────────────────────────────────────
+//  Decode helpers 
 function decodeString(hex: string): string {
   try {
     if (!hex || hex === '0x') return '';
@@ -202,13 +202,13 @@ function shortAddr(addr: string): string {
   return addr ? `${addr.slice(0, 8)}…${addr.slice(-6)}` : '—';
 }
 
-// ─── Detect ERC-20 contracts ──────────────────────────────────────────────────
+//  Detect ERC-20 contracts 
 function isERC20(c: DeployedContract): boolean {
   const fns = new Set(c.abi.map((i) => i.name));
   return fns.has('transfer') && fns.has('balanceOf') && fns.has('totalSupply');
 }
 
-// ─── Fetch last N txs touching a contract from chain ─────────────────────────
+//  Fetch last N txs touching a contract from chain 
 async function fetchContractTxs(
   rpcUrl: string,
   contractAddress: string,
@@ -262,7 +262,7 @@ async function fetchContractTxs(
   }
 }
 
-// ─── Fetch ETH balances ───────────────────────────────────────────────────────
+//  Fetch ETH balances 
 async function fetchEthBalance(rpcUrl: string, address: string): Promise<bigint> {
   try {
     const result = await rpcCall(rpcUrl, 'eth_getBalance', [address, 'latest']);
@@ -386,7 +386,7 @@ function ContractSelectorItem({
   );
 }
 
-// ─── Tx Event Row ─────────────────────────────────────────────────────────────
+//  Tx Event Row 
 function TxEventRow({ tx, symbol }: { tx: ChainTxEvent; symbol: string }) {
   const fnColor: Record<string, string> = {
     transfer: 'text-sky-400',
@@ -472,22 +472,22 @@ function TxEventRow({ tx, symbol }: { tx: ChainTxEvent; symbol: string }) {
 // Main Component
 // ════════════════════════════════════════════════════════════════════════════
 export default function ERC20TokenReader({ rpcUrl, deployedContracts, txHistory = [] }: Props) {
-  // ── Multi-select state ─────────────────────────────────────────────────────
+  //  Multi-select state 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [nativeSelected, setNativeSelected] = useState(false);
   const [customAddress, setCustomAddress] = useState('');
   const [showCustom, setShowCustom] = useState(false);
 
-  // ── Token data ─────────────────────────────────────────────────────────────
+  //  Token data 
   const [tokenData, setTokenData] = useState<Record<string, TokenInfo>>({}); // keyed by address
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set());
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // ── Chain tx events ────────────────────────────────────────────────────────
+  //  Chain tx events 
   const [chainTxEvents, setChainTxEvents] = useState<Record<string, ChainTxEvent[]>>({}); // keyed by address
   const [loadingTxs, setLoadingTxs] = useState<Set<string>>(new Set());
 
-  // ── Discover balances ──────────────────────────────────────────────────────
+  //  Discover balances 
   interface DiscoveredBalance {
     idx: number;
     address: string;
@@ -499,11 +499,11 @@ export default function ERC20TokenReader({ rpcUrl, deployedContracts, txHistory 
   const [discovering, setDiscovering] = useState(false);
   const [showDiscovered, setShowDiscovered] = useState<Record<string, boolean>>({});
 
-  // ── Native ETH balances ────────────────────────────────────────────────────
+  //  Native ETH balances 
   const [nativeBalances, setNativeBalances] = useState<DiscoveredBalance[]>([]);
   const [loadingNative, setLoadingNative] = useState(false);
 
-  // ── Active tab in results ──────────────────────────────────────────────────
+  //  Active tab in results 
   const [activeAddr, setActiveAddr] = useState<string>('native');
 
   const [copied, setCopied] = useState<string | null>(null);
@@ -515,7 +515,7 @@ export default function ERC20TokenReader({ rpcUrl, deployedContracts, txHistory 
     setTimeout(() => setCopied(null), 2000);
   };
 
-  // ── Classify contracts ─────────────────────────────────────────────────────
+  //  Classify contracts 
   const erc20Contracts = useMemo(() => deployedContracts.filter(isERC20), [deployedContracts]);
   const partialContracts = useMemo(
     () =>
@@ -540,7 +540,7 @@ export default function ERC20TokenReader({ rpcUrl, deployedContracts, txHistory 
     return m;
   }, [deployedContracts, partialContracts]);
 
-  // ── Active items (ordered) ─────────────────────────────────────────────────
+  //  Active items (ordered) 
   const activeItems: Array<{ type: 'native' } | { type: 'contract'; contract: DeployedContract }> =
     useMemo(() => {
       const items: Array<{ type: 'native' } | { type: 'contract'; contract: DeployedContract }> =
@@ -560,7 +560,7 @@ export default function ERC20TokenReader({ rpcUrl, deployedContracts, txHistory 
     }
   }, [activeItems]);
 
-  // ── Load token info ────────────────────────────────────────────────────────
+  //  Load token info 
   const loadToken = useCallback(
     async (contract: DeployedContract) => {
       const addr = contract.address;
@@ -666,7 +666,7 @@ export default function ERC20TokenReader({ rpcUrl, deployedContracts, txHistory 
     [rpcUrl],
   );
 
-  // ── Fetch chain tx events ──────────────────────────────────────────────────
+  //  Fetch chain tx events 
   const fetchTxEvents = useCallback(
     async (contract: DeployedContract) => {
       const addr = contract.address;
@@ -682,7 +682,7 @@ export default function ERC20TokenReader({ rpcUrl, deployedContracts, txHistory 
     [rpcUrl],
   );
 
-  // ── Load native ETH balances ───────────────────────────────────────────────
+  //  Load native ETH balances 
   const loadNativeBalances = useCallback(async () => {
     setLoadingNative(true);
     const accounts = await fetchLiveAccounts(rpcUrl);
@@ -696,7 +696,7 @@ export default function ERC20TokenReader({ rpcUrl, deployedContracts, txHistory 
     setLoadingNative(false);
   }, [rpcUrl]);
 
-  // ── Discover all balances for a token ─────────────────────────────────────
+  //  Discover all balances for a token 
   const discoverAllBalances = useCallback(async () => {
     const contracts = deployedContracts.filter((c) => selectedIds.has(c.id));
     if (contracts.length === 0) return;
@@ -728,7 +728,7 @@ export default function ERC20TokenReader({ rpcUrl, deployedContracts, txHistory 
     setDiscovering(false);
   }, [rpcUrl, selectedIds, deployedContracts, tokenData]);
 
-  // ── Effect: when contract selected, auto-load its data ────────────────────
+  //  Effect: when contract selected, auto-load its data 
   useEffect(() => {
     for (const item of activeItems) {
       if (item.type === 'native') {
@@ -743,7 +743,7 @@ export default function ERC20TokenReader({ rpcUrl, deployedContracts, txHistory 
     }
   }, [activeItems]);
 
-  // ── Merge app txHistory with chain tx events ───────────────────────────────
+  //  Merge app txHistory with chain tx events 
   function getMergedTxs(addr: string): ChainTxEvent[] {
     const chain = chainTxEvents[addr] || [];
     const appTxs = txHistory
@@ -775,10 +775,10 @@ export default function ERC20TokenReader({ rpcUrl, deployedContracts, txHistory 
     return merged.slice(0, 10);
   }
 
-  // ── No contracts empty state ───────────────────────────────────────────────
+  //  No contracts empty state 
   const allContracts = [...erc20Contracts, ...partialContracts, ...otherContracts];
 
-  // ── Active token tab data ──────────────────────────────────────────────────
+  //  Active token tab data 
   const activeContract =
     activeAddr !== 'native' ? deployedContracts.find((c) => c.address === activeAddr) : null;
   const activeToken = activeAddr !== 'native' ? tokenData[activeAddr] : null;
@@ -788,7 +788,7 @@ export default function ERC20TokenReader({ rpcUrl, deployedContracts, txHistory 
   // ════════════════════════════════════════════════════════════════════════
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* ── Header ── */}
+      {/*  Header  */}
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-card/80 flex-shrink-0">
         <Coins className="w-4 h-4 text-yellow-400" />
         <span className="text-sm font-semibold">ERC-20 Token Reader</span>
@@ -1098,7 +1098,7 @@ export default function ERC20TokenReader({ rpcUrl, deployedContracts, txHistory 
                 </div>
               )}
 
-              {/* ── Native ETH tab ── */}
+              {/*  Native ETH tab  */}
               {activeAddr === 'native' && nativeSelected && (
                 <>
                   <div className="p-5 border rounded-xl border-yellow-500/25 bg-yellow-500/5">
@@ -1177,7 +1177,7 @@ export default function ERC20TokenReader({ rpcUrl, deployedContracts, txHistory 
                 </>
               )}
 
-              {/* ── ERC-20 Token tab ── */}
+              {/*  ERC-20 Token tab  */}
               {activeAddr !== 'native' && activeContract && (
                 <>
                   {errors[activeAddr] && (
@@ -1191,7 +1191,7 @@ export default function ERC20TokenReader({ rpcUrl, deployedContracts, txHistory 
 
                   {activeToken && (
                     <>
-                      {/* ── Token Info Card ── */}
+                      {/*  Token Info Card  */}
                       <div className="p-5 border rounded-xl border-yellow-500/20 bg-yellow-500/5">
                         <div className="flex items-start justify-between mb-4">
                           <div className="flex items-center gap-3">
@@ -1324,7 +1324,7 @@ export default function ERC20TokenReader({ rpcUrl, deployedContracts, txHistory 
                         </div>
                       </div>
 
-                      {/* ── ERC-20 Checklist ── */}
+                      {/*  ERC-20 Checklist  */}
                       <div className="p-4 border rounded-xl border-border/60 bg-card">
                         <SectionHeader icon={Hash} label="ERC-20 Interface" />
                         <div className="grid grid-cols-3 gap-1.5">
@@ -1362,7 +1362,7 @@ export default function ERC20TokenReader({ rpcUrl, deployedContracts, txHistory 
                         </div>
                       </div>
 
-                      {/* ── Recent Transactions ── */}
+                      {/*  Recent Transactions  */}
                       <div className="overflow-hidden border rounded-xl border-border/60 bg-card">
                         <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 bg-muted/10">
                           <div className="flex items-center gap-2">
@@ -1445,7 +1445,7 @@ export default function ERC20TokenReader({ rpcUrl, deployedContracts, txHistory 
                         )}
                       </div>
 
-                      {/* ── Discovered Balances ── */}
+                      {/*  Discovered Balances  */}
                       {activeDiscovered && activeDiscovered.length > 0 && (
                         <div className="overflow-hidden border rounded-xl border-violet-500/20 bg-violet-500/5">
                           <div className="flex items-center justify-between px-4 py-3 border-b border-violet-500/15">
@@ -1563,7 +1563,7 @@ export default function ERC20TokenReader({ rpcUrl, deployedContracts, txHistory 
   );
 }
 
-// ─── Helper sub-components ────────────────────────────────────────────────────
+//  Helper sub-components 
 function SectionHeader({ icon: Icon, label }: { icon: any; label: string }) {
   return (
     <div className="flex items-center gap-1.5 mb-3">

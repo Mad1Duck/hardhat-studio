@@ -27,7 +27,7 @@ import Editor, { loader as monacoLoader } from '@monaco-editor/react';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 
-// ─── Quill dark-mode CSS override (injected once) ────────────────────────────
+//  Quill dark-mode CSS override (injected once) 
 const QUILL_DARK_CSS = `
 .ql-dark .ql-toolbar.ql-snow {
   background: #1a1a2e;
@@ -72,7 +72,7 @@ const QUILL_DARK_CSS = `
 }
 `;
 
-// ─── Quill config ─────────────────────────────────────────────────────────────
+//  Quill config 
 const QUILL_MODULES = {
   toolbar: [
     [{ header: [1, 2, 3, false] }],
@@ -100,12 +100,12 @@ const QUILL_FORMATS = [
   'link',
 ];
 
-// ─── Monaco — tell it where to find workers (Vite-compatible) ────────────────
+//  Monaco — tell it where to find workers (Vite-compatible) 
 monacoLoader.config({
   paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' },
 });
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+//  Types 
 export type NoteMode = 'rich' | 'code';
 
 export interface NoteDoc {
@@ -174,9 +174,9 @@ interface Props {
   projectPath?: string | null;
 }
 
-// ─── Main Panel ───────────────────────────────────────────────────────────────
+//  Main Panel 
 export default function NotesEditorPanel({ projectPath }: Props) {
-  // ── State ──────────────────────────────────────────────────────────────────
+  //  State 
   const [docs, setDocs] = useState<NoteDoc[]>(() => {
     try {
       const saved: NoteDoc[] = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
@@ -199,7 +199,7 @@ export default function NotesEditorPanel({ projectPath }: Props) {
   const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
-  // ── Inject Quill dark CSS once ─────────────────────────────────────────────
+  //  Inject Quill dark CSS once 
   useEffect(() => {
     const id = 'quill-dark-override';
     if (!document.getElementById(id)) {
@@ -210,14 +210,14 @@ export default function NotesEditorPanel({ projectPath }: Props) {
     }
   }, []);
 
-  // ── Keep activeId valid ────────────────────────────────────────────────────
+  //  Keep activeId valid 
   useEffect(() => {
     if (docs.length && !docs.find((d) => d.id === activeId)) {
       setActiveId(docs[0].id);
     }
   }, [docs, activeId]);
 
-  // ── Ctrl+S shortcut ────────────────────────────────────────────────────────
+  //  Ctrl+S shortcut 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -230,7 +230,7 @@ export default function NotesEditorPanel({ projectPath }: Props) {
     return () => window.removeEventListener('keydown', handler);
   }, [docs, activeId]);
 
-  // ── Close context menu on click ────────────────────────────────────────────
+  //  Close context menu on click 
   useEffect(() => {
     if (!contextMenu) return;
     const handler = () => setContextMenu(null);
@@ -238,7 +238,7 @@ export default function NotesEditorPanel({ projectPath }: Props) {
     return () => window.removeEventListener('click', handler);
   }, [contextMenu]);
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
+  //  Helpers 
   const persist = useCallback((list: NoteDoc[]) => {
     setDocs(list);
     try {
@@ -264,7 +264,7 @@ export default function NotesEditorPanel({ projectPath }: Props) {
 
   const activeDoc = docs.find((d) => d.id === activeId) ?? null;
 
-  // ── CRUD ───────────────────────────────────────────────────────────────────
+  //  CRUD 
   const createDoc = (mode: NoteMode) => {
     const doc = newDoc(mode);
     persist([...docs, doc]);
@@ -302,7 +302,7 @@ export default function NotesEditorPanel({ projectPath }: Props) {
     setRenamingId(null);
   };
 
-  // ── File: Save ─────────────────────────────────────────────────────────────
+  //  File: Save 
   const handleSave = async (doc: NoteDoc) => {
     const ext =
       doc.mode === 'rich'
@@ -368,7 +368,7 @@ export default function NotesEditorPanel({ projectPath }: Props) {
     }
   };
 
-  // ── File: Open ─────────────────────────────────────────────────────────────
+  //  File: Open 
   const handleOpen = async () => {
     const filePath = await window.api.showOpenFileDialog({
       title: 'Open File',
@@ -419,10 +419,10 @@ export default function NotesEditorPanel({ projectPath }: Props) {
     showStatus(`Opened ${basename(filePath)}`);
   };
 
-  // ─────────────────────────────────────────────────────────────────────────────
+  // 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-[#0a0a14]">
-      {/* ── Top bar ── */}
+      {/*  Top bar  */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-white/5 bg-[#0f0f1e] flex-shrink-0">
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-full bg-indigo-400/60" />
@@ -483,7 +483,7 @@ export default function NotesEditorPanel({ projectPath }: Props) {
       </div>
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* ── Sidebar ── */}
+        {/*  Sidebar  */}
         <div className="w-52 flex-shrink-0 border-r border-white/5 flex flex-col bg-[#0d0d1a] overflow-y-auto">
           <div className="px-3 pt-2.5 pb-1.5">
             <p className="text-[9px] font-semibold text-white/20 uppercase tracking-widest">
@@ -552,11 +552,11 @@ export default function NotesEditorPanel({ projectPath }: Props) {
           )}
         </div>
 
-        {/* ── Editor pane ── */}
+        {/*  Editor pane  */}
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
           {activeDoc ? (
             <>
-              {/* ── Doc toolbar ── */}
+              {/*  Doc toolbar  */}
               <div className="flex items-center gap-2 px-3 py-1.5 border-b border-white/5 bg-[#0d0d1a] flex-shrink-0">
                 {/* Inline title edit */}
                 <input
@@ -614,7 +614,7 @@ export default function NotesEditorPanel({ projectPath }: Props) {
                 )}
               </div>
 
-              {/* ── Editor ── */}
+              {/*  Editor  */}
               <div className="flex-1 min-h-0 overflow-hidden">
                 {activeDoc.mode === 'rich' ? (
                   <div className="flex flex-col h-full overflow-hidden ql-dark">
@@ -680,7 +680,7 @@ export default function NotesEditorPanel({ projectPath }: Props) {
         </div>
       </div>
 
-      {/* ── Right-click context menu ── */}
+      {/*  Right-click context menu  */}
       {contextMenu &&
         (() => {
           const doc = docs.find((d) => d.id === contextMenu.id);

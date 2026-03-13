@@ -49,7 +49,7 @@ export function DetailPanel({
       </div>
 
       <div className="flex-1 p-3 space-y-3 overflow-y-auto text-xs">
-        {/* ── Address detail ── */}
+        {/*  Address detail  */}
         {detailAddr &&
           (() => {
             const nd = (rfNodes.find((n: any) => n.id === detailAddr) as any)?.data as
@@ -149,14 +149,14 @@ export function DetailPanel({
             );
           })()}
 
-        {/* ── Tx loading ── */}
+        {/*  Tx loading  */}
         {loadingTx && (
           <div className="flex items-center justify-center py-10">
             <RefreshCw className="w-6 h-6 animate-spin text-sky-400" />
           </div>
         )}
 
-        {/* ── Tx detail ── */}
+        {/*  Tx detail  */}
         {!loadingTx &&
           detailTxHash &&
           txDetail &&

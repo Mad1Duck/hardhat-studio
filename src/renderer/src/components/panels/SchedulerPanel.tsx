@@ -11,7 +11,7 @@ import {
 
 const api = (window as any).api;
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+//  Types 
 type TaskType = 'contract_call' | 'script' | 'rpc_call';
 type TaskStatus = 'idle' | 'running' | 'success' | 'error' | 'stopped';
 
@@ -53,7 +53,7 @@ async function rpcFetch(url: string, method: string, params: unknown[]) {
   return d.result;
 }
 
-// ─── Countdown hook ───────────────────────────────────────────────────────────
+//  Countdown hook 
 function useCountdown(lastRun: number | undefined, intervalMs: number, enabled: boolean) {
   const [remaining, setRemaining] = useState(0);
   useEffect(() => {
@@ -70,7 +70,7 @@ function useCountdown(lastRun: number | undefined, intervalMs: number, enabled: 
   return remaining;
 }
 
-// ─── Countdown bar component ─────────────────────────────────────────────────
+//  Countdown bar component 
 function CountdownBar({ remaining, intervalMs, status }: { remaining: number; intervalMs: number; status: TaskStatus }) {
   const pct = intervalMs > 0 ? ((intervalMs - remaining) / intervalMs) * 100 : 0;
   const secs = Math.ceil(remaining / 1000);
@@ -94,7 +94,7 @@ function CountdownBar({ remaining, intervalMs, status }: { remaining: number; in
   );
 }
 
-// ─── Per-task log viewer ──────────────────────────────────────────────────────
+//  Per-task log viewer 
 function TaskLogViewer({ logs }: { logs: LogEntry[] }) {
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [logs]);
@@ -127,7 +127,7 @@ function TaskLogViewer({ logs }: { logs: LogEntry[] }) {
   );
 }
 
-// ─── Task card ────────────────────────────────────────────────────────────────
+//  Task card 
 function TaskCard({
   task, logs, onStart, onStop, onRemove, onRunOnce,
   deployedContracts, rpcUrl,
@@ -250,7 +250,7 @@ function TaskCard({
   );
 }
 
-// ─── Main Panel ───────────────────────────────────────────────────────────────
+//  Main Panel 
 interface Props {
   abis: ContractAbi[];
   deployedContracts: DeployedContract[];
@@ -392,7 +392,7 @@ export default function SchedulerPanel({ abis, deployedContracts, rpcUrl, projec
     return () => { Object.values(intervals.current).forEach(clearInterval); };
   }, []);
 
-  // ── Helpers for form ──────────────────────────────────────────────────────
+  //  Helpers for form 
   const selectedContract = deployedContracts.find(c => c.address === newTask.contractAddress);
   const selectedFn = selectedContract?.abi.find(i => i.name === newTask.functionName);
   const fnInputs = selectedFn?.inputs || [];
@@ -433,7 +433,7 @@ export default function SchedulerPanel({ abis, deployedContracts, rpcUrl, projec
       <ScrollArea className="flex-1 overflow-y-auto">
         <div className="p-4 space-y-3">
 
-          {/* ── Create form ─────────────────────────────────────────────── */}
+          {/*  Create form  */}
           {creating && (
             <div className="p-4 space-y-3 border border-blue-500/20 bg-blue-500/5 rounded-xl">
               <h3 className="text-sm font-semibold text-blue-300">New Scheduled Task</h3>
@@ -473,7 +473,7 @@ export default function SchedulerPanel({ abis, deployedContracts, rpcUrl, projec
                   </div>
                 </div>
 
-                {/* ── Contract call fields ── */}
+                {/*  Contract call fields  */}
                 {newTask.type === 'contract_call' && (<>
                   <div>
                     <Label className="text-[10px] mb-1 block">Contract</Label>
@@ -503,7 +503,7 @@ export default function SchedulerPanel({ abis, deployedContracts, rpcUrl, projec
                     </select>
                   </div>
 
-                  {/* ── Dynamic arg inputs ── */}
+                  {/*  Dynamic arg inputs  */}
                   {fnInputs.length > 0 && (
                     <div className="col-span-2">
                       <Label className="text-[10px] mb-2 block text-sky-400">Arguments</Label>
@@ -526,7 +526,7 @@ export default function SchedulerPanel({ abis, deployedContracts, rpcUrl, projec
                     </div>
                   )}
 
-                  {/* ── Private key for write ── */}
+                  {/*  Private key for write  */}
                   {isWrite && (
                     <div className="col-span-2">
                       <Label className="text-[10px] mb-1 block text-amber-400">⚠ Private Key (write function)</Label>
@@ -538,7 +538,7 @@ export default function SchedulerPanel({ abis, deployedContracts, rpcUrl, projec
                   )}
                 </>)}
 
-                {/* ── RPC fields ── */}
+                {/*  RPC fields  */}
                 {newTask.type === 'rpc_call' && (<>
                   <div>
                     <Label className="text-[10px] mb-1 block">RPC Method</Label>
@@ -552,7 +552,7 @@ export default function SchedulerPanel({ abis, deployedContracts, rpcUrl, projec
                   </div>
                 </>)}
 
-                {/* ── Script fields ── */}
+                {/*  Script fields  */}
                 {newTask.type === 'script' && (
                   <div className="col-span-2">
                     <Label className="text-[10px] mb-1 block">Script Path</Label>
@@ -573,7 +573,7 @@ export default function SchedulerPanel({ abis, deployedContracts, rpcUrl, projec
             </div>
           )}
 
-          {/* ── Task list ─────────────────────────────────────────────── */}
+          {/*  Task list  */}
           {tasks.length === 0 && !creating ? (
             <div className="flex flex-col items-center justify-center gap-3 py-20 text-muted-foreground/30">
               <Clock className="w-12 h-12 opacity-20" />

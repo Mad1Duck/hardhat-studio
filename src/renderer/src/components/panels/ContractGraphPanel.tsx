@@ -74,7 +74,7 @@ type ContractNodeData = {
   showFunctions: boolean;
 };
 
-// ─── Color tokens ─────────────────────────────────────────────────────────────
+//  Color tokens 
 const TYPE = {
   contract: { bg: '#0d1624', border: '#3b82f6', accent: '#60a5fa', badge: '#1e3a5f', icon: '◈' },
   interface: { bg: '#130d24', border: '#8b5cf6', accent: '#a78bfa', badge: '#3b1f6e', icon: '◇' },
@@ -82,7 +82,7 @@ const TYPE = {
   abstract: { bg: '#1f1a0d', border: '#f59e0b', accent: '#fbbf24', badge: '#78350f', icon: '◉' },
 } as const;
 
-// ─── Mermaid init ─────────────────────────────────────────────────────────────
+//  Mermaid init 
 mermaid.initialize({
   startOnLoad: false,
   theme: 'dark',
@@ -99,7 +99,7 @@ mermaid.initialize({
   },
 });
 
-// ─── Custom Contract Node ─────────────────────────────────────────────────────
+//  Custom Contract Node 
 const ContractNode = memo(({ data, selected }: NodeProps) => {
   const d = data as ContractNodeData;
   const t = TYPE[d.nodeType];
@@ -231,7 +231,7 @@ const ContractNode = memo(({ data, selected }: NodeProps) => {
 });
 ContractNode.displayName = 'ContractNode';
 
-// ─── Custom Inheritance Edge ──────────────────────────────────────────────────
+//  Custom Inheritance Edge 
 function InheritEdge({
   id,
   sourceX,
@@ -293,7 +293,7 @@ function InheritEdge({
 const NODE_TYPES = { contract: ContractNode };
 const EDGE_TYPES = { inherit: InheritEdge };
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+//  Main Component 
 export default function ContractGraphPanel({ abis, sourceFiles, projectPath }: Props) {
   const [rfNodes, setRfNodes] = useState<NodeFlow[]>([]);
   const [rfEdges, setRfEdges] = useState<Edge[]>([]);
@@ -318,7 +318,7 @@ export default function ContractGraphPanel({ abis, sourceFiles, projectPath }: P
   const [selectedNode, setSelectedNode] = useState<ContractNodeData | null>(null);
   const mermaidRef = useRef<HTMLDivElement>(null);
 
-  // ── Build graph data ─────────────────────────────────────────────────────
+  //  Build graph data 
   const buildGraph = useCallback(async () => {
     if (!abis.length) return;
     const sourceMap: Record<string, string> = {};
@@ -508,7 +508,7 @@ export default function ContractGraphPanel({ abis, sourceFiles, projectPath }: P
     );
   }, [showFunctions]);
 
-  // ── Render Mermaid ──────────────────────────────────────────────────────
+  //  Render Mermaid 
   useEffect(() => {
     if (view !== 'mermaid' || !mermaidCode) return;
     const render = async () => {
@@ -531,10 +531,10 @@ export default function ContractGraphPanel({ abis, sourceFiles, projectPath }: P
     setTimeout(() => setCopied(false), 1500);
   };
 
-  // ── RENDER ──────────────────────────────────────────────────────────────
+  //  RENDER 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-background">
-      {/* ── Toolbar ── */}
+      {/*  Toolbar  */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-card flex-shrink-0">
         <div className="flex items-center gap-2">
           <Network className="w-4 h-4 text-blue-400" />
@@ -588,7 +588,7 @@ export default function ContractGraphPanel({ abis, sourceFiles, projectPath }: P
         </div>
       </div>
 
-      {/* ── Legend bar (graph only) ── */}
+      {/*  Legend bar (graph only)  */}
       {view === 'graph' && (
         <div className="flex items-center gap-4 px-4 py-1.5 border-b border-border bg-card/40 flex-shrink-0 text-[10px]">
           {(Object.entries(TYPE) as [NodeType, (typeof TYPE)[NodeType]][]).map(([t, s]) => (
@@ -608,7 +608,7 @@ export default function ContractGraphPanel({ abis, sourceFiles, projectPath }: P
         </div>
       )}
 
-      {/* ── Main content ── */}
+      {/*  Main content  */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* GRAPH VIEW — React Flow */}
         {view === 'graph' && (
@@ -979,7 +979,7 @@ export default function ContractGraphPanel({ abis, sourceFiles, projectPath }: P
                           key={i}
                           className="flex items-center gap-3 text-xs font-mono bg-card border border-border rounded-lg px-4 py-2.5">
                           <span style={{ color: TYPE[src.nodeType].accent }}>{src.label}</span>
-                          <span className="text-orange-400 opacity-50">──inherits──▶</span>
+                          <span className="text-orange-400 opacity-50">inherits▶</span>
                           <span style={{ color: TYPE[tgt.nodeType].accent }}>{tgt.label}</span>
                         </div>
                       );

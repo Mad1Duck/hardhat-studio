@@ -45,7 +45,7 @@ interface Props {
   deployedContracts: DeployedContract[];
 }
 
-// ─── RPC ─────────────────────────────────────────────────────────────────────
+//  RPC 
 async function rpc(url: string, method: string, params: unknown[] = []) {
   const r = await fetch(url, {
     method: 'POST',
@@ -69,7 +69,7 @@ function timeAgo(ts: number) {
   return `${Math.floor(s / 3600)}h ago`;
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+//  Types 
 interface RpcBlock {
   number: string;
   hash: string;
@@ -126,7 +126,7 @@ const TYPE_STYLE: Record<string, { bg: string; border: string; glow: string; ico
   external: { bg: '#130b1f', border: '#8b5cf6', glow: '#8b5cf640', icon: '◈' },
 };
 
-// ─── Custom Node ──────────────────────────────────────────────────────────────
+//  Custom Node 
 function AddressNode({ data, selected }: NodeProps) {
   const nd = data as NodeData;
   const s = TYPE_STYLE[nd.nodeType] || TYPE_STYLE.wallet;
@@ -200,7 +200,7 @@ function AddressNode({ data, selected }: NodeProps) {
   );
 }
 
-// ─── Custom Edge ──────────────────────────────────────────────────────────────
+//  Custom Edge 
 function TxEdge({
   id,
   sourceX,
@@ -290,7 +290,7 @@ function TxEdge({
 const NODE_TYPES = { address: AddressNode };
 const EDGE_TYPES = { tx: TxEdge };
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
+//  Main 
 export default function TransactionGraphPanel({ txHistory, rpcUrl, deployedContracts }: Props) {
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState([]);
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState([]);
@@ -317,7 +317,7 @@ export default function TransactionGraphPanel({ txHistory, rpcUrl, deployedContr
 
   const contractAddrs = new Set(deployedContracts.map((c) => c.address.toLowerCase()));
 
-  // ── Build React Flow graph from blocks ──────────────────────────────────────
+  //  Build React Flow graph from blocks 
   const buildGraph = useCallback(
     (blocks: RpcBlock[]) => {
       type NM = { type: NodeData['nodeType']; txCount: number; contractName?: string };
@@ -427,7 +427,7 @@ export default function TransactionGraphPanel({ txHistory, rpcUrl, deployedContr
     [txHistory, deployedContracts, filterAddr, showOnlyKnown],
   );
 
-  // ── Load from RPC ───────────────────────────────────────────────────────────
+  //  Load from RPC 
   const loadFromRpc = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -466,7 +466,7 @@ export default function TransactionGraphPanel({ txHistory, rpcUrl, deployedContr
     if (loadedBlocks.length > 0) buildGraph(loadedBlocks);
   }, [filterAddr, showOnlyKnown]);
 
-  // ── Fetch tx detail ─────────────────────────────────────────────────────────
+  //  Fetch tx detail 
   const fetchTxDetail = useCallback(
     async (hash: string) => {
       setLoadingTx(true);
@@ -489,7 +489,7 @@ export default function TransactionGraphPanel({ txHistory, rpcUrl, deployedContr
     fetchTxDetail(hash);
   };
 
-  // ── Search ──────────────────────────────────────────────────────────────────
+  //  Search 
   const handleSearch = async () => {
     const q = searchInput.trim();
     if (!q) return;
@@ -523,10 +523,10 @@ export default function TransactionGraphPanel({ txHistory, rpcUrl, deployedContr
 
   const allTxs = loadedBlocks.flatMap((b) => b.transactions || []);
 
-  // ── RENDER ──────────────────────────────────────────────────────────────────
+  //  RENDER 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-background">
-      {/* ── Toolbar ── */}
+      {/*  Toolbar  */}
       <div className="flex flex-wrap items-center flex-shrink-0 gap-2 px-3 py-2 border-b border-border ">
         <GitFork className="flex-shrink-0 w-4 h-4 text-sky-400" />
         <span className="text-sm font-semibold">Transaction Graph</span>
@@ -649,7 +649,7 @@ export default function TransactionGraphPanel({ txHistory, rpcUrl, deployedContr
         </div>
       )}
 
-      {/* ── Body ── */}
+      {/*  Body  */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* GRAPH VIEW */}
         {view === 'graph' && (
@@ -872,7 +872,7 @@ export default function TransactionGraphPanel({ txHistory, rpcUrl, deployedContr
           </div>
         )}
 
-        {/* ── Detail panel ── */}
+        {/*  Detail panel  */}
         {(detailAddr || detailTxHash || loadingTx) && (
           <div className="flex flex-col flex-shrink-0 overflow-hidden border-l w-72 border-border bg-card/60">
             <div className="flex items-center justify-between flex-shrink-0 px-3 py-2 border-b border-border">
@@ -893,7 +893,7 @@ export default function TransactionGraphPanel({ txHistory, rpcUrl, deployedContr
             </div>
 
             <div className="flex-1 p-3 space-y-3 overflow-y-auto text-xs">
-              {/* ── Address ── */}
+              {/*  Address  */}
               {detailAddr &&
                 (() => {
                   const nd = (rfNodes.find((n: any) => n.id === detailAddr) as any)?.data as
@@ -992,14 +992,14 @@ export default function TransactionGraphPanel({ txHistory, rpcUrl, deployedContr
                   );
                 })()}
 
-              {/* ── Tx loading ── */}
+              {/*  Tx loading  */}
               {loadingTx && (
                 <div className="flex items-center justify-center py-10">
                   <RefreshCw className="w-6 h-6 animate-spin text-sky-400" />
                 </div>
               )}
 
-              {/* ── Tx detail ── */}
+              {/*  Tx detail  */}
               {!loadingTx &&
                 detailTxHash &&
                 txDetail &&

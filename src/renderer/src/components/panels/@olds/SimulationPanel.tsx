@@ -45,7 +45,7 @@ import { ALL_MODULES, MODULE_CATEGORIES } from '../../modules/Simulation/Simulat
 // } from './sim/types'
 // import { ALL_MODULES, MODULE_CATEGORIES, SimModule } from './sim/modules'
 
-// ─── Event display config ─────────────────────────────────────────────────────
+//  Event display config 
 const EVENT_COLOR: Partial<Record<SimEventType, string>> = {
   deposit: 'text-emerald-400',
   borrow: 'text-amber-400',
@@ -83,7 +83,7 @@ const EVENT_COLOR: Partial<Record<SimEventType, string>> = {
   success: 'text-emerald-400',
 };
 
-// ─── RPC helpers ──────────────────────────────────────────────────────────────
+//  RPC helpers 
 async function rpcCall(url: string, method: string, params: any[] = []) {
   const r = await fetch(url, {
     method: 'POST',
@@ -95,7 +95,7 @@ async function rpcCall(url: string, method: string, params: any[] = []) {
   return d.result;
 }
 
-// ─── Contract supporter checker ───────────────────────────────────────────────
+//  Contract supporter checker 
 function checkContractSupport(
   deployedContracts: DeployedContract[],
   requiredMethods: string[],
@@ -121,7 +121,7 @@ function checkContractSupport(
   return { supported: missing.length === 0, missing, suggestions: [] };
 }
 
-// ─── Token decimal cache ─────────────────────────────────────────────────────
+//  Token decimal cache 
 const _decimalsCache = new Map<string, number>();
 
 async function getTokenDecimals(
@@ -175,7 +175,7 @@ const TOKEN_AMOUNT_ARGS: Record<string, number[]> = {
   borrow: [0],
 };
 
-// ─── Contract scoring for resolution ──────────────────────────────────────────
+//  Contract scoring for resolution 
 // Note: we no longer penalise "mock" names — users may intentionally deploy
 // Mock* contracts (e.g. MockIDRX) and the explicit selector lets them pick it.
 function scoreContractMatch(name: string, contractName: string): number {
@@ -189,7 +189,7 @@ function scoreContractMatch(name: string, contractName: string): number {
   return score;
 }
 
-// ─── Call deployed contract ───────────────────────────────────────────────────
+//  Call deployed contract 
 async function callDeployedContract(
   deployedContracts: DeployedContract[],
   rpcUrl: string,
@@ -220,7 +220,7 @@ async function callDeployedContract(
     }
   }
 
-  // ── Smart contract resolution ──────────────────────────────────────────────
+  //  Smart contract resolution 
   // If the user explicitly picked a contract, use it directly — no scoring.
   let dc: DeployedContract | undefined;
 
@@ -317,7 +317,7 @@ async function callDeployedContract(
   }
 }
 
-// ─── Props ────────────────────────────────────────────────────────────────────
+//  Props 
 interface Props {
   abis: ContractAbi[];
   deployedContracts: DeployedContract[];
@@ -325,7 +325,7 @@ interface Props {
   onTxRecorded: (tx: TxRecord) => void;
 }
 
-// ─── Contract Notice component ────────────────────────────────────────────────
+//  Contract Notice component 
 function ContractNotice({
   module,
   deployedContracts,
@@ -416,7 +416,7 @@ function ContractNotice({
   );
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
+//  Main component 
 export default function SimulationPanel({ abis, deployedContracts, rpcUrl, onTxRecorded }: Props) {
   const [activeModuleId, setActiveModuleId] = useState<string>('token');
   const [events, setEvents] = useState<SimEvent[]>([]);
@@ -437,7 +437,7 @@ export default function SimulationPanel({ abis, deployedContracts, rpcUrl, onTxR
   const [users, setUsers] = useState<SimUser[]>(initialUsers);
   const [pool, setPool] = useState<PoolState>(defaultPool());
 
-  // ── Refs so simulation always reads latest state ───────────────────────────
+  //  Refs so simulation always reads latest state 
   const usersRef = useRef<SimUser[]>(users);
   const poolRef = useRef<PoolState>(pool);
   useEffect(() => {
@@ -449,14 +449,14 @@ export default function SimulationPanel({ abis, deployedContracts, rpcUrl, onTxR
 
   const activeModule = ALL_MODULES.find((m) => m.id === activeModuleId)!;
 
-  // ── Universal per-module contract selector ──────────────────────────────────
+  //  Universal per-module contract selector 
   // Map: moduleId → contractId chosen by user
   const [contractSelections, setContractSelections] = useState<Record<string, string>>({});
 
   const setModuleContract = (moduleId: string, contractId: string) =>
     setContractSelections((prev) => ({ ...prev, [moduleId]: contractId }));
 
-  // ── ABI enrichment ────────────────────────────────────────────────────────
+  //  ABI enrichment 
   // When a contract is deployed via script, the ABI can be empty ([]) if the
   // artifact name didn't match at deploy time.  We patch it on-the-fly using
   // the `abis` prop (loaded from the Hardhat artifact files).
@@ -512,7 +512,7 @@ export default function SimulationPanel({ abis, deployedContracts, rpcUrl, onTxR
       activeModule?.requiredMethods.length === 0,
   );
 
-  // ── Can the simulation run? ────────────────────────────────────────────────
+  //  Can the simulation run? 
   // Blocked when a contract is selected but still has missing required methods.
   const selectedCompat = selectedSimContract
     ? getContractCompatibility(selectedSimContract, activeModuleId)
@@ -566,7 +566,7 @@ export default function SimulationPanel({ abis, deployedContracts, rpcUrl, onTxR
     setRunning(false);
   };
 
-  // ── Sync on-chain token balances for all users after real txs ──────────────
+  //  Sync on-chain token balances for all users after real txs 
   const syncOnChainBalances = useCallback(
     async (currentUsers: SimUser[]) => {
       if (!deployedContracts.length) return;
@@ -757,7 +757,7 @@ export default function SimulationPanel({ abis, deployedContracts, rpcUrl, onTxR
 
   return (
     <div className="flex h-full overflow-hidden bg-background">
-      {/* ── Left sidebar: module list ── */}
+      {/*  Left sidebar: module list  */}
       <div className="flex flex-col flex-shrink-0 w-56 overflow-hidden border-r border-border bg-card">
         <div className="px-3 py-2.5 border-b border-border">
           <div className="flex items-center gap-2 mb-2">
@@ -832,7 +832,7 @@ export default function SimulationPanel({ abis, deployedContracts, rpcUrl, onTxR
         </ScrollArea>
       </div>
 
-      {/* ── Center: params + run ── */}
+      {/*  Center: params + run  */}
       <div className="flex flex-col flex-shrink-0 overflow-hidden border-r w-60 border-border bg-card/30">
         {activeModule && (
           <>
@@ -849,7 +849,7 @@ export default function SimulationPanel({ abis, deployedContracts, rpcUrl, onTxR
 
             <ScrollArea className="flex-1 overflow-y-auto">
               <div className="p-3 space-y-2.5">
-                {/* ── Universal contract selector — shown whenever contracts are deployed ── */}
+                {/*  Universal contract selector — shown whenever contracts are deployed  */}
                 {enrichedContracts.length > 0 &&
                   (() => {
                     const curSel = contractSelections[activeModuleId] ?? '';
@@ -1125,7 +1125,7 @@ export default function SimulationPanel({ abis, deployedContracts, rpcUrl, onTxR
         )}
       </div>
 
-      {/* ── Right: dashboard + log ── */}
+      {/*  Right: dashboard + log  */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         {/* Pool state bar */}
         <div className="grid flex-shrink-0 grid-cols-6 gap-px border-b bg-border border-border">

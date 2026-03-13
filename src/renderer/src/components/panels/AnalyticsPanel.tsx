@@ -96,7 +96,7 @@ async function rpc(url: string, method: string, params: any[] = []) {
   return d.result;
 }
 
-// ─── Sparkline ──────────────────────────────────────────────────────────────
+//  Sparkline 
 function Sparkline({ data, color = '#f97316', height = 32 }: { data: number[]; color?: string; height?: number }) {
   if (data.length < 2) return <div style={{ height }} className="flex items-center justify-center opacity-10"><div className="w-full h-px bg-current opacity-30" /></div>;
   const max = Math.max(...data, 1), min = Math.min(...data);
@@ -121,7 +121,7 @@ function Sparkline({ data, color = '#f97316', height = 32 }: { data: number[]; c
   );
 }
 
-// ─── KPI Card ────────────────────────────────────────────────────────────────
+//  KPI Card 
 function KpiCard({ icon: Icon, label, value, sub, accent, trend, spark }: {
   icon: any; label: string; value: string; sub?: string;
   accent: string; trend?: 'up' | 'down' | 'flat'; spark?: number[];
@@ -162,7 +162,7 @@ function KpiCard({ icon: Icon, label, value, sub, accent, trend, spark }: {
   );
 }
 
-// ─── Chart Tooltip ───────────────────────────────────────────────────────────
+//  Chart Tooltip 
 function CT({ active, payload, label, unit = '' }: any) {
   if (!active || !payload?.length) return null;
   return (
@@ -177,7 +177,7 @@ function CT({ active, payload, label, unit = '' }: any) {
   );
 }
 
-// ─── Tx Badge ────────────────────────────────────────────────────────────────
+//  Tx Badge 
 function TxBadge({ status }: { status: 'success' | 'failed' | 'pending' }) {
   return status === 'success'
     ? <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0 shadow-[0_0_4px_#10b981]" />
@@ -213,7 +213,7 @@ export default function AnalyticsPanel({ txHistory, deployedContracts, rpcUrl }:
     return m;
   }, [deployedContracts]);
 
-  // ── Fetch block + its txs ──────────────────────────────────────────────────
+  //  Fetch block + its txs 
   const fetchLatest = useCallback(async () => {
     if (!rpcUrl) return;
     try {
@@ -346,7 +346,7 @@ export default function AnalyticsPanel({ txHistory, deployedContracts, rpcUrl }:
     return () => clearInterval(id);
   }, [rpcUrl, live, fetchLatest]);
 
-  // ── Merge txHistory (app) + chainTxs (chain) ──────────────────────────────
+  //  Merge txHistory (app) + chainTxs (chain) 
   // App txHistory is the source of truth for named function calls
   // chainTxs fills in any on-chain activity not captured by app
   const mergedTxs = useMemo(() => {
@@ -359,7 +359,7 @@ export default function AnalyticsPanel({ txHistory, deployedContracts, rpcUrl }:
     };
   }, [txHistory, chainTxs]);
 
-  // ── Derived stats ──────────────────────────────────────────────────────────
+  //  Derived stats 
   const stats = useMemo(() => {
     const all = txHistory;
     const success = all.filter(t => t.status === 'success');
@@ -436,11 +436,11 @@ export default function AnalyticsPanel({ txHistory, deployedContracts, rpcUrl }:
     return [...appItems, ...chainItems].slice(0, 30);
   }, [txHistory, mergedTxs]);
 
-  // ──────────────────────────────────────────────────────────────────────────
+  // 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-background">
 
-      {/* ── Header ── */}
+      {/*  Header  */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-card/80 flex-shrink-0">
         <div className="flex items-center gap-2.5">
           <Activity className="w-4 h-4 text-emerald-400" />
@@ -952,7 +952,7 @@ export default function AnalyticsPanel({ txHistory, deployedContracts, rpcUrl }:
   );
 }
 
-// ─── Helper components ────────────────────────────────────────────────────────
+//  Helper components 
 function SectionLabel({ icon: Icon, label, inline }: { icon: any; label: string; inline?: boolean }) {
   if (inline) return (
     <div className="flex items-center gap-1.5">

@@ -55,7 +55,7 @@ export function PoolStateBar({ pool }: PoolStateBarProps) {
   );
 }
 
-//  Event Log ─
+//  Event Log 
 interface EventLogProps {
   events: SimEvent[];
   running: boolean;

@@ -32,7 +32,7 @@ interface StorageVar {
   bytes: number;
 }
 
-// ─── Static colour maps (Tailwind purge-safe) ─────────────────────────────────
+//  Static colour maps (Tailwind purge-safe) 
 const SELECTED_BORDER: Record<ProxyPattern, string> = {
   transparent: 'border-blue-500/50 bg-blue-500/5',
   uups: 'border-purple-500/50 bg-purple-500/5',
@@ -73,7 +73,7 @@ const BADGE_COLOR: Record<ProxyPattern, string> = {
   eternal: 'bg-orange-500/10 text-orange-300',
 };
 
-// ─── Pattern definitions ───────────────────────────────────────────────────────
+//  Pattern definitions 
 interface PatternMeta {
   label: string;
   eip: string;
@@ -204,7 +204,7 @@ export default function UpgradeWizardPanel({
 
     let script = '';
 
-    // ── Fresh deploy ──
+    //  Fresh deploy 
     if (!proxyAddress) {
       switch (pattern) {
         case 'transparent':
@@ -390,7 +390,7 @@ main().catch(console.error);`;
           script = '// Pattern not supported for code generation';
       }
     } else {
-      // ── Upgrade existing proxy ──
+      //  Upgrade existing proxy 
       const newName = newImplContract || implContract;
       switch (pattern) {
         case 'diamond':
@@ -510,7 +510,7 @@ main().catch(console.error);`;
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-background">
-      {/* ── Header ── */}
+      {/*  Header  */}
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-card flex-shrink-0">
         <Wand2 className="w-4 h-4 text-purple-400" />
         <span className="text-sm font-semibold">Upgrade Wizard</span>
@@ -537,7 +537,7 @@ main().catch(console.error);`;
       </div>
 
       <div className="flex-1 max-w-2xl p-6 overflow-auto">
-        {/* ── Step 1: Pattern ── */}
+        {/*  Step 1: Pattern  */}
         {step === 'select-pattern' && (
           <div>
             <h2 className="mb-1 text-lg font-bold">Choose Proxy Pattern</h2>
@@ -600,7 +600,7 @@ main().catch(console.error);`;
           </div>
         )}
 
-        {/* ── Step 2: Contracts ── */}
+        {/*  Step 2: Contracts  */}
         {step === 'select-contracts' && (
           <div>
             <h2 className="mb-1 text-lg font-bold">Configure Contracts</h2>
@@ -736,7 +736,7 @@ main().catch(console.error);`;
           </div>
         )}
 
-        {/* ── Step 3: Review ── */}
+        {/*  Step 3: Review  */}
         {step === 'review' && (
           <div>
             <h2 className="mb-1 text-lg font-bold">Review & Check</h2>
@@ -871,7 +871,7 @@ main().catch(console.error);`;
           </div>
         )}
 
-        {/* ── Step 4: Generated script ── */}
+        {/*  Step 4: Generated script  */}
         {step === 'generate' && (
           <div>
             <h2 className="mb-1 text-lg font-bold">Generated Script</h2>

@@ -44,7 +44,7 @@ interface FnState {
 }
 type EthersLib = typeof import('ethers');
 
-// ─── Stdout parser ────────────────────────────────────────────────────────────
+//  Stdout parser 
 // Supports both `hardhat run` scripts AND `hardhat ignition deploy` output
 
 interface ParsedDeploy {
@@ -56,7 +56,7 @@ interface ParsedDeploy {
 function parseDeployOutput(line: string): ParsedDeploy | null {
   const addr40 = /0x[0-9a-fA-F]{40}/;
 
-  // ── Hardhat Ignition format ──────────────────────────────────────────────────
+  //  Hardhat Ignition format 
   // "MyModule#MyContract - 0x5FbDB2315678afecb367f032d93F642f64180aa3"
   const ignitionLine = /^\s*([\w]+#[\w]+)\s+-\s+(0x[0-9a-fA-F]{40})\s*$/;
   const ignMatch = ignitionLine.exec(line);
@@ -67,18 +67,18 @@ function parseDeployOutput(line: string): ParsedDeploy | null {
     return { contractName, address: ignMatch[2], line: line.trim() };
   }
 
-  // ── Ignition "Executed" line (extract contract name for later address match) ─
+  //  Ignition "Executed" line (extract contract name for later address match) 
   // "  Executed MyModule#MyContract"
   const execMatch = /Executed\s+[\w]+#([\w]+)/.exec(line);
   if (execMatch) return null; // just a status line, no address yet
 
-  // ── hardhat-deploy format ────────────────────────────────────────────────────
+  //  hardhat-deploy format 
   // "deploying "MyContract" (tx: 0x...) ...: deployed at 0x... with N gas"
   const hdeploy = /deploying\s+["\'']?([\w]+)["\'']?.*deployed at (0x[0-9a-fA-F]{40})/i;
   const hdMatch = hdeploy.exec(line);
   if (hdMatch) return { contractName: hdMatch[1], address: hdMatch[2], line: line.trim() };
 
-  // ── Generic patterns ─────────────────────────────────────────────────────────
+  //  Generic patterns 
   // Must contain an address
   const addrMatch = addr40.exec(line);
   if (!addrMatch) return null;
@@ -181,7 +181,7 @@ export default function ContractInteract({
   const [accountBalance, setAccountBalance] = useState<string | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
 
-  // ─── Bookmarks ────────────────────────────────────────────────────────────────
+  //  Bookmarks 
   const [bookmarkedFns, setBookmarkedFns] = useState<Set<string>>(() => {
     try {
       return new Set(JSON.parse(localStorage.getItem('interact_bookmarks') || '[]'));
@@ -203,7 +203,7 @@ export default function ContractInteract({
     });
   };
 
-  // ─── Hardhat Script Runner ────────────────────────────────────────────────
+  //  Hardhat Script Runner 
   const [showScriptRunner, setShowScriptRunner] = useState(false);
   const [extraScriptPaths, setExtraScriptPaths] = useState<string[]>([]);
   const [scripts, setScripts] = useState<ScriptFile[]>([]);
@@ -249,7 +249,7 @@ export default function ContractInteract({
     } catch {}
   };
 
-  // ─── Load scripts when runner opens ────────────────────────────────────────
+  //  Load scripts when runner opens 
   const addScriptPath = async () => {
     const path = await (window as any).api.selectFolder();
     console.log(path, '=====path=====');
@@ -299,7 +299,7 @@ export default function ContractInteract({
     if (showScriptRunner) loadScripts();
   }, [showScriptRunner, loadScripts]);
 
-  // ─── Run deploy script ────────────────────────────────────────────────────
+  //  Run deploy script 
   const runDeployScript = useCallback(async () => {
     if (!projectPath || !selectedScript) return;
     const pm = projectInfo?.isBun
@@ -939,7 +939,7 @@ export default function ContractInteract({
 
       {/* Functions panel */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        {/* ── Hardhat Script Runner Banner ── */}
+        {/*  Hardhat Script Runner Banner  */}
         <div className="flex items-center flex-shrink-0 gap-3 px-4 py-2 border-b border-border bg-emerald-500/5">
           <FileCode className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
           <span className="text-[11px] text-emerald-400/80 flex-1">Deploy via Hardhat scripts</span>
@@ -955,7 +955,7 @@ export default function ContractInteract({
           </Button>
         </div>
 
-        {/* ── Script Runner Panel ── */}
+        {/*  Script Runner Panel  */}
         {showScriptRunner && (
           <div className="flex-shrink-0 border-b border-border bg-card/90">
             {/* Config row */}
