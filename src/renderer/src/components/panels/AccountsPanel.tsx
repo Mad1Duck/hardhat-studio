@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
-//  ERC-20 minimal ABI 
+//  ERC-20 minimal ABI
 const ERC20_ABI = [
   'function name() view returns (string)',
   'function symbol() view returns (string)',
@@ -33,16 +33,14 @@ const ERC20_ABI = [
   'function totalSupply() view returns (uint256)',
 ];
 
-//  Types 
+//  Types
 interface TokenInfo {
   address: string;
   name: string;
   symbol: string;
   decimals: number;
   totalSupply?: string;
-  /** per-account balances: address → formatted balance */
   balances: Record<string, string>;
-  /** raw bigint strings */
   rawBalances: Record<string, string>;
   error?: string;
 }
@@ -52,7 +50,7 @@ interface Props {
   onSelectAccount: (privateKey: string) => void;
 }
 
-//  RPC call helper 
+//  RPC call helper
 async function rpcCall(url: string, method: string, params: unknown[]) {
   const r = await fetch(url, {
     method: 'POST',
@@ -64,11 +62,8 @@ async function rpcCall(url: string, method: string, params: unknown[]) {
   return d.result;
 }
 
-//  eth_call helper 
+//  eth_call helper
 function encodeSelector(sig: string) {
-  // tiny keccak-256 via a known selector list, or use a real encoder
-  // We'll use eth_call with raw calldata via ABI encoding
-  // For common ERC20 functions we hardcode selectors
   const selectors: Record<string, string> = {
     'name()': '0x06fdde03',
     'symbol()': '0x95d89b41',
@@ -93,7 +88,6 @@ function decodeString(hex: string): string {
     const h = hex.startsWith('0x') ? hex.slice(2) : hex;
     if (!h || h === '') return '';
 
-    // Try ABI-encoded dynamic string (offset + length + data)
     if (h.length >= 128) {
       try {
         const offset = parseInt(h.slice(0, 64), 16);
@@ -154,7 +148,6 @@ async function fetchTokenInfo(
     rawBalances: {},
   };
   try {
-    // First verify the address has contract code, before making ERC-20 calls
     const codeResult = await rpcCall(rpcUrl, 'eth_getCode', [addr, 'latest']);
     if (!codeResult || codeResult === '0x' || codeResult === '0x0') {
       info.error = 'No contract at this address — it may have been redeployed to a new address';
@@ -163,7 +156,11 @@ async function fetchTokenInfo(
     }
 
     const safeEthCall = async (calldata: string): Promise<string> => {
-      try { return await ethCall(rpcUrl, addr, calldata); } catch { return '0x'; }
+      try {
+        return await ethCall(rpcUrl, addr, calldata);
+      } catch {
+        return '0x';
+      }
     };
 
     const [nameHex, symbolHex, decimalsHex, supplyHex] = await Promise.all([
@@ -173,7 +170,6 @@ async function fetchTokenInfo(
       safeEthCall(encodeSelector('totalSupply()')!),
     ]);
 
-    // Validate: if all return '0x', it's not an ERC-20
     if (nameHex === '0x' && symbolHex === '0x' && supplyHex === '0x') {
       info.error = 'Contract exists but does not implement ERC-20 interface';
       info.name = 'Not ERC-20';
@@ -186,7 +182,6 @@ async function fetchTokenInfo(
     const supply = decodeUint(supplyHex);
     info.totalSupply = formatUnits(supply, info.decimals);
 
-    // Fetch balanceOf for each account in parallel
     await Promise.all(
       accounts.map(async (acct) => {
         try {
@@ -227,8 +222,6 @@ function shortAddr(addr: string) {
   return `${addr.slice(0, 8)}…${addr.slice(-6)}`;
 }
 
-//  Deployed-contract token auto-discovery 
-// We try to detect if a deployed contract is ERC-20 by calling symbol()
 async function tryDecodeERC20(rpcUrl: string, address: string): Promise<string | null> {
   try {
     const hex = await ethCall(rpcUrl, address, encodeSelector('symbol()')!);
@@ -239,7 +232,7 @@ async function tryDecodeERC20(rpcUrl: string, address: string): Promise<string |
   }
 }
 
-//  Main component 
+//  Main component
 export default function AccountsPanel({ rpcUrl, onSelectAccount }: Props) {
   const [accounts, setAccounts] = useState<HardhatAccount[]>([]);
   const [balances, setBalances] = useState<Record<string, string>>({});
@@ -287,7 +280,6 @@ export default function AccountsPanel({ rpcUrl, onSelectAccount }: Props) {
     }
   }, [rpcUrl]);
 
-  // Reload token balances when accounts change
   const refreshTokenBalances = useCallback(
     async (accs: HardhatAccount[], addrs: string[]) => {
       if (!accs.length || !addrs.length) return;
@@ -300,7 +292,6 @@ export default function AccountsPanel({ rpcUrl, onSelectAccount }: Props) {
     [rpcUrl],
   );
 
-  // Initial load
   useEffect(() => {
     fetchAccounts().then((accs) => {
       if (savedTokenAddrs.length > 0 && accs) {
@@ -309,7 +300,6 @@ export default function AccountsPanel({ rpcUrl, onSelectAccount }: Props) {
     });
   }, [fetchAccounts]);
 
-  // Auto-discover ERC-20 from deployed contracts stored in localStorage
   const autoDiscover = useCallback(
     async (accs: HardhatAccount[]) => {
       setAutoDiscovering(true);
@@ -397,7 +387,6 @@ export default function AccountsPanel({ rpcUrl, onSelectAccount }: Props) {
 
   const totalEth = Object.values(balances).reduce((a, b) => a + parseFloat(b || '0'), 0);
 
-  // Token holdings for a specific account
   const accountTokens = (addr: string) =>
     tokens.filter((t) => parseFloat(t.balances[addr] || '0') > 0);
 
@@ -549,7 +538,6 @@ export default function AccountsPanel({ rpcUrl, onSelectAccount }: Props) {
                               {ethBal} ETH
                             </span>
                           </div>
-                          {/* Token badges (top 3 with balance) */}
                           {heldTokens.slice(0, 3).map((t) => (
                             <div key={t.address} className="flex items-center gap-1">
                               <span className="text-[10px] font-mono text-violet-400/80">
@@ -594,7 +582,6 @@ export default function AccountsPanel({ rpcUrl, onSelectAccount }: Props) {
                     {/* Expanded detail */}
                     {isExpanded && (
                       <div className="border-t border-border/50 px-3 pb-3 pt-2.5 space-y-3">
-                        {/* Full address + private key */}
                         <div className="grid grid-cols-1 gap-2">
                           <div>
                             <div className="text-[9px] text-muted-foreground/50 uppercase tracking-widest mb-1">
@@ -644,7 +631,6 @@ export default function AccountsPanel({ rpcUrl, onSelectAccount }: Props) {
                           </div>
                         </div>
 
-                        {/* Token holdings for this account */}
                         {tokens.length > 0 && (
                           <div>
                             <div className="text-[9px] text-muted-foreground/50 uppercase tracking-widest mb-1.5 flex items-center gap-1">
@@ -709,13 +695,11 @@ export default function AccountsPanel({ rpcUrl, onSelectAccount }: Props) {
           </ScrollArea>
         </div>
 
-        {/*  Token panel (right side)  */}
         <div
           className={cn(
             'border-l border-border flex flex-col overflow-hidden transition-all flex-shrink-0',
             showTokenPanel ? 'w-64' : 'w-8',
           )}>
-          {/* Collapse toggle */}
           <button
             onClick={() => setShowTokenPanel((p) => !p)}
             className="flex items-center justify-center flex-shrink-0 w-full px-2 py-2 transition-colors border-b border-border bg-card/50 hover:bg-muted/30">
@@ -733,7 +717,6 @@ export default function AccountsPanel({ rpcUrl, onSelectAccount }: Props) {
 
           {showTokenPanel && (
             <>
-              {/* Add token input */}
               <div className="px-3 py-2.5 border-b border-border bg-card/30 flex-shrink-0 space-y-2">
                 <div className="flex gap-1.5">
                   <input
