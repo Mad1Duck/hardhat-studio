@@ -652,7 +652,7 @@ export default function Sidebar({
           </div>
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-mono text-muted-foreground/30">Hardhat Studio</span>
-            <span className="text-[10px] font-mono text-muted-foreground/20">v7.0.1</span>
+            <span className="text-[10px] font-mono text-muted-foreground/20">v7.0.2</span>
           </div>
           <LicenseBadge onClick={() => setShowLicenseModal(true)} />
           <UpdateChecker compact />
