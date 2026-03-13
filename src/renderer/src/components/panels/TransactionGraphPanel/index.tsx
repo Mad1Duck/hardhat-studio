@@ -6,8 +6,13 @@ import { GraphToolbar } from './components/GraphToolbar';
 import { GraphView } from './components/GraphView';
 import { ListView, BlocksView } from './components/DataViews';
 import { DetailPanel } from './components/DetailPanel';
+import { OnEdgesChange, OnNodesChange } from '@xyflow/react';
 
-export default function TransactionGraphPanel({ txHistory, rpcUrl, deployedContracts }: TransactionGraphPanelProps) {
+export default function TransactionGraphPanel({
+  txHistory,
+  rpcUrl,
+  deployedContracts,
+}: TransactionGraphPanelProps) {
   const g = useTransactionGraph({ txHistory, rpcUrl, deployedContracts });
 
   return (
@@ -24,7 +29,10 @@ export default function TransactionGraphPanel({ txHistory, rpcUrl, deployedContr
         filterAddr={g.filterAddr}
         showOnlyKnown={g.showOnlyKnown}
         searchInput={g.searchInput}
-        onBlockRangeClick={(n) => { g.setBlockRange(n); g.setBlockInput(String(n)); }}
+        onBlockRangeClick={(n) => {
+          g.setBlockRange(n);
+          g.setBlockInput(String(n));
+        }}
         onBlockInputChange={g.setBlockInput}
         onBlockInputCommit={g.commitBlockInput}
         onToggleAutoRefresh={() => g.setAutoRefresh((p) => !p)}
@@ -40,7 +48,9 @@ export default function TransactionGraphPanel({ txHistory, rpcUrl, deployedContr
         <div className="flex items-center gap-2 px-4 py-1.5 bg-red-500/10 border-b border-red-500/20 text-xs text-red-400 flex-shrink-0">
           <AlertCircle className="w-3 h-3" />
           {g.error}
-          <button className="ml-auto" onClick={() => g.setError('')}><X className="w-3 h-3" /></button>
+          <button className="ml-auto" onClick={() => g.setError('')}>
+            <X className="w-3 h-3" />
+          </button>
         </div>
       )}
 
@@ -49,8 +59,8 @@ export default function TransactionGraphPanel({ txHistory, rpcUrl, deployedContr
           <GraphView
             rfNodes={g.rfNodes}
             rfEdges={g.rfEdges}
-            onNodesChange={g.onNodesChange}
-            onEdgesChange={g.onEdgesChange}
+            onNodesChange={g.onNodesChange as OnNodesChange}
+            onEdgesChange={g.onEdgesChange as OnEdgesChange}
             loading={g.loading}
             onNodeClick={(node) => {
               g.setDetailAddr((node.data as NodeData).address);
@@ -68,15 +78,24 @@ export default function TransactionGraphPanel({ txHistory, rpcUrl, deployedContr
             blockCount={g.loadedBlocks.length}
             filterAddr={g.filterAddr}
             txHistory={txHistory}
-            onTxClick={(hash) => { g.openTxDetail(hash); g.setView('graph'); }}
+            onTxClick={(hash) => {
+              g.openTxDetail(hash);
+              g.setView('graph');
+            }}
           />
         )}
 
         {g.view === 'blocks' && (
           <BlocksView
             blocks={g.loadedBlocks}
-            onViewBlock={(block) => { g.buildGraph([block]); g.setView('graph'); }}
-            onTxClick={(hash) => { g.openTxDetail(hash); g.setView('graph'); }}
+            onViewBlock={(block) => {
+              g.buildGraph([block]);
+              g.setView('graph');
+            }}
+            onTxClick={(hash) => {
+              g.openTxDetail(hash);
+              g.setView('graph');
+            }}
           />
         )}
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   CommandConfig,
   ContractAbi,
@@ -9,7 +9,6 @@ import {
   TxRecord,
   SourceFile,
   NavTab,
-  HardhatAccount,
 } from './types';
 import NotesEditorPanel from './components/panels/NotesEditorPanel';
 import ProjectSelector from './components/panels/ProjectSelector';
@@ -53,17 +52,8 @@ import ABICompatibilityChecker from './components/panels/ABICompatibilityChecker
 import TransactionGraphPanel from './components/panels/TransactionGraphPanel';
 import ERC20TokenReader from './components/panels/ERC20TokenReader';
 import { UpdateChecker } from './components/UpdateChecker';
-import { DiscordUser } from './integrations/discord/types/discord.type';
 import { LicenseGate, useLicense } from './integrations/license';
 import CollabPanel from './components/panels/CollabPanel';
-
-type UpdateStatusEvent = {
-  type: 'checking' | 'available' | 'not-available' | 'download-progress' | 'downloaded' | 'error';
-  version?: string;
-  releaseNotes?: string;
-  percent?: number;
-  message?: string;
-};
 
 const DEFAULT_COMMANDS: CommandConfig[] = [
   {
@@ -195,7 +185,6 @@ export default function App() {
     } catch {}
   }, [commands]);
 
-  // Update deploy command based on detected package manager
   useEffect(() => {
     if (!projectInfo) return;
     const pm = projectInfo.packageManager;
@@ -370,7 +359,6 @@ export default function App() {
     [projectPath, commands],
   );
 
-  // ── Collab tab change — set mode based on tab ──
   const handleCollabTabChange = useCallback(
     (tab: NavTab) => {
       if (tab === 'collab' && collabMode === 'none') {
@@ -380,7 +368,6 @@ export default function App() {
     [collabMode],
   );
 
-  // ── Collab exit — clear mode and received state ──
   const handleCollabExit = useCallback(() => {
     setCollabMode('none');
     setActiveTab('commands');
@@ -397,14 +384,12 @@ export default function App() {
     }
   }, [collabMode]);
 
-  // ── Exit project — clear all state and go back to project selector ──
   const handleExitProject = useCallback(() => {
     if (
       !confirm('Exit project? This will stop all running processes and clear the current session.')
     )
       return;
 
-    // Stop all running processes
     processStates.forEach((_, id) => {
       window.api.stopCommand(id).catch(() => {});
     });
@@ -428,7 +413,6 @@ export default function App() {
       new Map(DEFAULT_COMMANDS.map((c) => [c.id, { status: 'idle' as const, logs: [] }])),
     );
 
-    // Clear localStorage
     try {
       localStorage.removeItem('lastProject');
     } catch {}
@@ -480,7 +464,6 @@ export default function App() {
   }, []);
 
   const handleRunCollabNode = useCallback(async () => {
-    // Use projectPath if available, fallback to '.' so node can run without a project open
     const cwd = projectPath ?? '.';
 
     const nodeState = processStates.get('node');
@@ -1063,16 +1046,13 @@ export default function App() {
           </LicenseGate>
         );
       case 'collab':
-        // Handled outside renderPanel to keep component mounted
         return null;
       default:
         return null;
     }
   };
 
-  // ── Pre-project: collab or project selector ──
   if (!projectPath || !projectInfo?.valid) {
-    // Show full app layout when collab mode is active OR user navigated to collab tab
     if (activeTab === 'collab' || collabMode !== 'none') {
       return (
         <div className="flex w-screen h-screen overflow-hidden bg-background">
@@ -1109,7 +1089,6 @@ export default function App() {
             <div
               className="flex-1 min-w-0 overflow-hidden"
               style={{ display: 'flex', flexDirection: 'column' }}>
-              {/* CollabPanel always mounted when collab active */}
               <div
                 style={{
                   display: activeTab === 'collab' ? 'flex' : 'none',
@@ -1118,7 +1097,6 @@ export default function App() {
                 }}>
                 {renderCollabPanel()}
               </div>
-              {/* Other panels */}
               {activeTab !== 'collab' && (
                 <div style={{ height: '100%' }}>{renderPanel(activeTab)}</div>
               )}
@@ -1140,7 +1118,6 @@ export default function App() {
     );
   }
 
-  // ── Main app ──
   return (
     <div className="flex flex-col w-screen h-screen overflow-hidden bg-background">
       <UpdateChecker />
@@ -1175,7 +1152,6 @@ export default function App() {
         />
         <main className="relative flex flex-1 min-w-0 overflow-hidden">
           <div className="flex-1 min-w-0 overflow-hidden">
-            {/* CollabPanel stays mounted always when collab mode active — prevents disconnect on tab switch */}
             {collabMode !== 'none' && (
               <div
                 style={{
@@ -1186,7 +1162,6 @@ export default function App() {
                 {renderCollabPanel()}
               </div>
             )}
-            {/* Render other panels normally, hide when collab panel is showing */}
             <div
               style={{
                 display: activeTab !== 'collab' ? 'flex' : 'none',
@@ -1195,7 +1170,6 @@ export default function App() {
               }}>
               {renderPanel(activeTab)}
             </div>
-            {/* Collab tab when no active session yet — normal mount/unmount is fine */}
             {collabMode === 'none' && activeTab === 'collab' && (
               <div style={{ height: '100%' }}>{renderCollabPanel()}</div>
             )}
