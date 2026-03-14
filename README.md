@@ -1,4 +1,4 @@
-# Hardhat Studio v2
+# Hardhat Studio
 
 > Professional Smart Contract Development Environment built with **Electron + Vite + React + shadcn/ui**
 
